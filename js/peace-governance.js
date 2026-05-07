@@ -82,7 +82,49 @@
   function agencyColor(agency, index = 0) {
     return AGENCY_COLORS[agency] || FALLBACK_COLORS[index % FALLBACK_COLORS.length];
   }
+   function setRollingText(id, value, decimals = 0, suffix = "") {
+  const el = $(id);
+  if (!el) return;
 
+  const target = Number(String(value).replace(/,/g, ""));
+
+  if (isNaN(target)) {
+    el.textContent = value;
+    return;
+  }
+
+  animateCount(el, target, decimals, suffix);
+}
+
+function animateCount(el, target, decimals = 0, suffix = "") {
+  const duration = 900;
+  const startTime = performance.now();
+  const startValue = 0;
+
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = startValue + (target - startValue) * eased;
+
+    el.textContent =
+      current.toLocaleString(undefined, {
+        maximumFractionDigits: decimals,
+        minimumFractionDigits: decimals
+      }) + suffix;
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      el.textContent =
+        target.toLocaleString(undefined, {
+          maximumFractionDigits: decimals,
+          minimumFractionDigits: decimals
+        }) + suffix;
+    }
+  }
+
+  requestAnimationFrame(update);
+}
   function setWarning(message) {
     const el = $("data-warning");
     if (!el) return;
@@ -422,18 +464,22 @@
     ], darkPlotLayout({ barmode: "stack", margin: { t: 25, r: 25, b: 90, l: 55 }, showlegend: true, legend: { orientation: "h", y: 1.13, x: 0, font: { color: "#e8f1fa" } } }), { displayModeBar: false, responsive: true });
   }
 
-  function updateKPIs(records) {
-    const states = uniqueValues(records.filter((r) => !r.isAdminArea), "state").length;
-    const adminAreas = uniqueValues(records.filter((r) => r.isAdminArea), "state").length;
-    const indicators = groupIndicators(records);
-    const below50 = indicators.filter((r) => Number(r.target) > 0 && Number(r.achieved) < 50).length;
-    if ($("kpi-states")) $("kpi-states").textContent = fmt(states);
-    if ($("kpi-admin-areas")) $("kpi-admin-areas").textContent = fmt(adminAreas);
-    if ($("kpi-counties")) $("kpi-counties").textContent = fmt(uniqueValues(records, "county").length);
-    if ($("kpi-agencies")) $("kpi-agencies").textContent = fmt(uniqueValues(records, "agency").length);
-    if ($("kpi-indicators")) $("kpi-indicators").textContent = fmt(uniqueValues(records, "indicator").length);
-    if ($("kpi-below-50")) $("kpi-below-50").textContent = fmt(below50);
-  }
+   function updateKPIs(records) {
+      const states = uniqueValues(records.filter((r) => !r.isAdminArea), "state").length;
+      const adminAreas = uniqueValues(records.filter((r) => r.isAdminArea), "state").length;
+     const indicators = groupIndicators(records);
+
+     const below50 = indicators.filter(
+       (r) => Number(r.target) > 0 && Number(r.achieved) < 50
+       ).length;
+
+    setRollingText("kpi-states", states);
+    setRollingText("kpi-admin-areas", adminAreas);
+    setRollingText("kpi-counties", uniqueValues(records, "county").length);
+    setRollingText("kpi-agencies", uniqueValues(records, "agency").length);
+    setRollingText("kpi-indicators", uniqueValues(records, "indicator").length);
+    setRollingText("kpi-below-50", below50);
+    }
 
   function updateInsights(records) {
     const el = $("simple-insights-list");
