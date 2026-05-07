@@ -313,47 +313,72 @@
     return Object.values(out).sort((a, b) => b.people - a.people);
   }
 
-  function updateKPIs(records) {
-    const responses = records.length;
+  function setRollingText(id, value, suffix = "") {
+  const el = $(id);
+  if (!el) return;
 
-    const concluded = records.filter((r) =>
-      (r.status || "").toLowerCase().includes("concluded")
-    ).length;
+  const target = Number(String(value).replace(/,/g, ""));
 
-    const ongoing = records.filter((r) =>
-      (r.status || "").toLowerCase().includes("ongoing")
-    ).length;
-
-    const within14 = records.filter(
-      (r) => Number(r.daysToRespond) > 0 && Number(r.daysToRespond) <= 14
-    ).length;
-
-    const within14Pct = responses ? (within14 / responses) * 100 : 0;
-
-    if ($("kpi-states"))
-      $("kpi-states").textContent = fmt(uniqueValues(records, "state").length);
-
-    if ($("kpi-counties"))
-      $("kpi-counties").textContent = fmt(uniqueValues(records, "county").length);
-
-    if ($("kpi-single-count"))
-      $("kpi-single-count").textContent = fmt(sum(records, "singleCount"));
-
-    if ($("kpi-responses"))
-      $("kpi-responses").textContent = fmt(responses);
-
-    if ($("kpi-concluded"))
-      $("kpi-concluded").textContent = fmt(concluded);
-
-    if ($("kpi-ongoing"))
-      $("kpi-ongoing").textContent = fmt(ongoing);
-
-    if ($("kpi-avg-days"))
-      $("kpi-avg-days").textContent = fmt1(avg(records.map((r) => r.daysToRespond)));
-
-    if ($("kpi-within-14"))
-      $("kpi-within-14").textContent = `${fmt1(within14Pct)}%`;
+  if (isNaN(target)) {
+    el.textContent = value;
+    return;
   }
+
+  animateCount(el, target, suffix);
+}
+
+function animateCount(el, target, suffix = "") {
+  const duration = 900;
+  const startTime = performance.now();
+  const startValue = 0;
+
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = startValue + (target - startValue) * eased;
+
+    el.textContent = suffix === "%"
+      ? `${current.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+      : current.toLocaleString(undefined, { maximumFractionDigits: suffix === "days" ? 1 : 0 });
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      el.textContent = suffix === "%"
+        ? `${target.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+        : target.toLocaleString(undefined, { maximumFractionDigits: suffix === "days" ? 1 : 0 });
+    }
+  }
+
+  requestAnimationFrame(update);
+}
+
+function updateKPIs(records) {
+  const responses = records.length;
+
+  const concluded = records.filter((r) =>
+    (r.status || "").toLowerCase().includes("concluded")
+  ).length;
+
+  const ongoing = records.filter((r) =>
+    (r.status || "").toLowerCase().includes("ongoing")
+  ).length;
+
+  const within14 = records.filter(
+    (r) => Number(r.daysToRespond) > 0 && Number(r.daysToRespond) <= 14
+  ).length;
+
+  const within14Pct = responses ? (within14 / responses) * 100 : 0;
+
+  setRollingText("kpi-states", uniqueValues(records, "state").length);
+  setRollingText("kpi-counties", uniqueValues(records, "county").length);
+  setRollingText("kpi-single-count", sum(records, "singleCount"));
+  setRollingText("kpi-responses", responses);
+  setRollingText("kpi-concluded", concluded);
+  setRollingText("kpi-ongoing", ongoing);
+  setRollingText("kpi-avg-days", avg(records.map((r) => r.daysToRespond)), "days");
+  setRollingText("kpi-within-14", within14Pct, "%");
+}
 
   function updateInsights(records) {
     const el = $("simple-insights-list");
