@@ -117,9 +117,40 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function setText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  const target = Number(String(value).replace(/,/g, ""));
+
+  if (isNaN(target)) {
+    el.textContent = value;
+    return;
   }
+
+  animateCount(el, target);
+}
+
+function animateCount(el, target) {
+  const duration = 900;
+  const startTime = performance.now();
+  const startValue = 0;
+
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.floor(startValue + (target - startValue) * eased);
+
+    el.textContent = current.toLocaleString();
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      el.textContent = target.toLocaleString();
+    }
+  }
+
+  requestAnimationFrame(update);
+}
 
   function setOptions(select, values, allLabel = "All") {
     if (!select) return;
