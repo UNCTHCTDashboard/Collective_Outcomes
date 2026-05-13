@@ -41,6 +41,9 @@
   let geojsonCache = null;
   let lastTables = {};
 
+  let selectedMapStates = new Set();
+  let selectedMapCounties = new Set();
+
   const $ = (id) => document.getElementById(id);
 
   function fmt(n) {
@@ -125,6 +128,163 @@ function animateCount(el, target, decimals = 0, suffix = "") {
 
   requestAnimationFrame(update);
 }
+
+
+  function mapSelectionActive() {
+    return selectedMapStates.size > 0 || selectedMapCounties.size > 0;
+  }
+
+  function recordMatchesMapSelection(r) {
+    if (!mapSelectionActive()) return true;
+    return selectedMapStates.has(r.state) || selectedMapCounties.has(r.county);
+  }
+
+  function getRecordsForMapSelector() {
+    const f = getSelectedFilters();
+    return DATA.filter((r) =>
+      (f.indicator === "All" || r.indicator === f.indicator) &&
+      (f.agency === "All" || r.agency === f.agency)
+    );
+  }
+
+  function locationGroupsForSelector() {
+    const rows = getRecordsForMapSelector();
+    const states = {};
+    const counties = {};
+
+    rows.forEach((r) => {
+      if (r.state) {
+        if (!states[r.state]) states[r.state] = { type: "State", name: r.state, parent: "", value: 0, records: 0 };
+        states[r.state].value += Number(r.current) || 0;
+        states[r.state].records += 1;
+      }
+      if (r.county) {
+        if (!counties[r.county]) counties[r.county] = { type: "County", name: r.county, parent: r.state || "", value: 0, records: 0 };
+        counties[r.county].value += Number(r.current) || 0;
+        counties[r.county].records += 1;
+      }
+    });
+
+    return [...Object.values(states), ...Object.values(counties)]
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  }
+
+  function renderMapSelectorList() {
+    const list = $("map-selector-list");
+    if (!list) return;
+
+    const search = norm($("map-selector-search")?.value || "");
+    const type = $("map-selector-type")?.value || "All";
+    const items = locationGroupsForSelector().filter((d) => {
+      const matchesType = type === "All" || d.type === type;
+      const matchesSearch = !search || norm(`${d.name} ${d.parent}`).includes(search);
+      return matchesType && matchesSearch;
+    });
+
+    if (!items.length) {
+      list.innerHTML = `<div class="map-selector-empty">No matching states or counties for the current filters.</div>`;
+      updateMapSelectorCount();
+      return;
+    }
+
+    list.innerHTML = items.map((d) => {
+      const checked = d.type === "State" ? selectedMapStates.has(d.name) : selectedMapCounties.has(d.name);
+      const key = `${d.type}||${String(d.name).replace(/"/g, "&quot;")}`;
+      return `
+        <label class="map-selector-row" data-type="${d.type}" data-name="${String(d.name).replace(/"/g, "&quot;")}">
+          <input type="checkbox" ${checked ? "checked" : ""} data-key="${key}">
+          <span>
+            <div class="map-selector-name">${d.name}</div>
+            <div class="map-selector-meta">${d.type}${d.parent ? " · " + d.parent : ""} · ${fmt(d.records)} record(s)</div>
+          </span>
+          <span class="map-selector-value">${fmt(d.value)}</span>
+        </label>
+      `;
+    }).join("");
+
+    list.querySelectorAll(".map-selector-row input").forEach((input) => {
+      input.addEventListener("change", () => {
+        const row = input.closest(".map-selector-row");
+        const type = row?.dataset.type;
+        const name = row?.dataset.name;
+        if (!type || !name) return;
+
+        const targetSet = type === "State" ? selectedMapStates : selectedMapCounties;
+        if (input.checked) targetSet.add(name);
+        else targetSet.delete(name);
+
+        updateMapSelectorCount();
+        updateDashboard();
+      });
+    });
+
+    updateMapSelectorCount();
+  }
+
+  function updateMapSelectorCount() {
+    const count = selectedMapStates.size + selectedMapCounties.size;
+    const el = $("map-selector-count");
+    if (el) el.textContent = `${count} selected`;
+  }
+
+  function openMapSelector() {
+    $("map-selector-backdrop")?.classList.add("open");
+    $("map-selector-drawer")?.classList.add("open");
+    $("map-selector-drawer")?.setAttribute("aria-hidden", "false");
+    renderMapSelectorList();
+  }
+
+  function closeMapSelector() {
+    $("map-selector-backdrop")?.classList.remove("open");
+    $("map-selector-drawer")?.classList.remove("open");
+    $("map-selector-drawer")?.setAttribute("aria-hidden", "true");
+  }
+
+
+  function initViewTabs() {
+    const mapTab = $("map-view-tab");
+    const agencyTab = $("agency-ranking-tab");
+    const mapPanel = $("map-view-panel");
+    const agencyPanel = $("agency-ranking-panel");
+
+    if (!mapTab || !agencyTab || !mapPanel || !agencyPanel || mapTab.dataset.ready === "1") return;
+    mapTab.dataset.ready = "1";
+
+    function activate(view) {
+      const showMap = view === "map";
+
+      mapTab.classList.toggle("active", showMap);
+      agencyTab.classList.toggle("active", !showMap);
+      mapPanel.classList.toggle("active", showMap);
+      agencyPanel.classList.toggle("active", !showMap);
+
+      if (showMap && map) {
+        setTimeout(() => map.invalidateSize(), 180);
+      }
+
+      if (!showMap && typeof Plotly !== "undefined" && $("agency-ranking-chart")) {
+        setTimeout(() => Plotly.Plots.resize($("agency-ranking-chart")), 120);
+      }
+    }
+
+    mapTab.addEventListener("click", () => activate("map"));
+    agencyTab.addEventListener("click", () => activate("agency"));
+  }
+
+  function initMapSelector() {
+    $("open-map-selector")?.addEventListener("click", openMapSelector);
+    $("close-map-selector")?.addEventListener("click", closeMapSelector);
+    $("map-selector-backdrop")?.addEventListener("click", closeMapSelector);
+    $("map-selector-search")?.addEventListener("input", renderMapSelectorList);
+    $("map-selector-type")?.addEventListener("change", renderMapSelectorList);
+    $("map-selector-clear")?.addEventListener("click", () => {
+      selectedMapStates.clear();
+      selectedMapCounties.clear();
+      renderMapSelectorList();
+      updateDashboard();
+    });
+  }
+
   function setWarning(message) {
     const el = $("data-warning");
     if (!el) return;
@@ -199,7 +359,10 @@ function animateCount(el, target, decimals = 0, suffix = "") {
           const el = $(id);
           if (el) el.value = "All";
         });
+        selectedMapStates.clear();
+        selectedMapCounties.clear();
         refreshCascadingFilters();
+        renderMapSelectorList();
         updateDashboard();
       });
     }
@@ -209,6 +372,7 @@ function animateCount(el, target, decimals = 0, suffix = "") {
 
   function onFilterChange() {
     refreshCascadingFilters();
+    renderMapSelectorList();
     updateDashboard();
   }
 
@@ -227,7 +391,8 @@ function animateCount(el, target, decimals = 0, suffix = "") {
       (f.indicator === "All" || r.indicator === f.indicator) &&
       (f.agency === "All" || r.agency === f.agency) &&
       (f.state === "All" || r.state === f.state) &&
-      (f.county === "All" || r.county === f.county)
+      (f.county === "All" || r.county === f.county) &&
+      recordMatchesMapSelection(r)
     );
   }
 
@@ -543,7 +708,10 @@ function animateCount(el, target, decimals = 0, suffix = "") {
           const countyName = getCountyName(feature);
           const item = byCounty[countyName];
           const value = item ? (presenceMode ? 1 : item.current) : 0;
-          return { fillColor: getChoroplethColor(value, presenceMode ? 1 : maxValue, presenceMode), weight: 0.8, opacity: 1, color: "rgba(255,255,255,0.55)", fillOpacity: value > 0 ? 0.88 : 0.18 };
+          const selectedCounty = selectedMapCounties.has(countyName);
+          const selectedState = item && selectedMapStates.has(item.state);
+          const isSelected = selectedCounty || selectedState;
+          return { fillColor: getChoroplethColor(value, presenceMode ? 1 : maxValue, presenceMode), weight: isSelected ? 2.4 : 0.8, opacity: 1, color: isSelected ? "#ffffff" : "rgba(255,255,255,0.55)", fillOpacity: value > 0 ? 0.88 : 0.18 };
         },
         onEachFeature: function (feature, layer) {
           const countyName = getCountyName(feature) || "Unknown county";
@@ -623,6 +791,80 @@ function animateCount(el, target, decimals = 0, suffix = "") {
     setAgencyNote("civic-education-agencies", civicEducation);
   }
 
+
+  function renderAgencyRanking(records) {
+    const el = $("agency-ranking-chart");
+    if (!el || typeof Plotly === "undefined") return;
+
+    const selected = getSelectedFilters();
+    const rows = groupSum(records, "agency", "current")
+      .filter((d) => d.name && d.name !== "Not specified" && Number(d.value) > 0)
+      .slice(0, 12)
+      .reverse();
+
+    lastTables.agencyRanking = [...rows].reverse();
+
+    if (!rows.length) {
+      Plotly.purge("agency-ranking-chart");
+      el.innerHTML = `<div class="empty-chart">No agency ranking data available for the selected filters.</div>`;
+      return;
+    }
+
+    const values = rows.map((d) => Number(d.value || 0));
+    const total = values.reduce((a, b) => a + b, 0);
+    const maxValue = Math.max(...values);
+    const mixedUnitNote = selected.indicator === "All"
+      ? "Mixed indicators selected"
+      : selected.indicator;
+
+    Plotly.newPlot(
+      "agency-ranking-chart",
+      [{
+        type: "bar",
+        orientation: "h",
+        y: rows.map((d) => d.name),
+        x: values,
+        text: values.map((v) => fmt(v)),
+        textposition: "outside",
+        customdata: values.map((v) => total ? (v / total) * 100 : 0),
+        cliponaxis: false,
+        marker: {
+          color: rows.map((d, i) => agencyColor(d.name, i)),
+          line: { color: "rgba(255,255,255,0.16)", width: 1 }
+        },
+        hovertemplate:
+          "<b>%{y}</b><br>" +
+          "Current number: %{x:,}<br>" +
+          "Share: %{customdata:.1f}%<br>" +
+          mixedUnitNote.replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+          "<extra></extra>"
+      }],
+      darkPlotLayout({
+        margin: {
+          t: 25,
+          r: maxValue > 999999 ? 125 : 95,
+          b: 50,
+          l: 210
+        },
+        xaxis: {
+          title: "Current Number",
+          gridcolor: "rgba(255,255,255,0.08)",
+          zerolinecolor: "rgba(255,255,255,0.15)",
+          color: "#8ba8c4"
+        },
+        yaxis: {
+          title: "",
+          gridcolor: "rgba(255,255,255,0.05)",
+          zerolinecolor: "rgba(255,255,255,0.15)",
+          color: "#8ba8c4",
+          automargin: true
+        },
+        showlegend: false
+      }),
+      { displayModeBar: false, responsive: true }
+    );
+  }
+
   function renderCoverageCharts(records) {
     const id = "state-indicator-coverage-chart";
     if (!$(id) || typeof Plotly === "undefined") return;
@@ -646,11 +888,13 @@ function animateCount(el, target, decimals = 0, suffix = "") {
   }
 
   function updateDashboard() {
+    updateMapSelectorCount();
     const records = getFilteredRecords();
     updateKPIs(records);
     updateInsights(records);
     renderIndicatorTable(records);
     updateMap(records);
+    renderAgencyRanking(records);
     renderAchievement(records);
     renderIndicatorSpecificCharts(records);
     renderCoverageCharts(records);
@@ -665,7 +909,9 @@ function animateCount(el, target, decimals = 0, suffix = "") {
     const rows = lastTables[type] || [];
     if (!rows.length) return;
     let csv = "";
-    if (type === "indicatorTable") {
+    if (type === "agencyRanking") {
+      csv = "Reporting Entity,Current Number\n" + rows.map((r) => `"${String(r.name || "").replace(/"/g, '""')}",${r.value}`).join("\n");
+    } else if (type === "indicatorTable") {
       csv = "Indicator,Reporting UN Entities,Current Number,Target,Achieved %\n" + rows.map((r) => `"${String(r.indicator || "").replace(/"/g, '""')}","${String(r.agencies || "").replace(/"/g, '""')}",${r.current},${r.target},${r.achieved}`).join("\n");
     } else if (type === "indicatorAchievement") {
       csv = "Indicator,Achieved %,Current Number,Target\n" + rows.map((r) => `"${String(r.name || "").replace(/"/g, '""')}",${r.value},${r.current},${r.target}`).join("\n");
@@ -686,7 +932,10 @@ function animateCount(el, target, decimals = 0, suffix = "") {
   document.addEventListener("DOMContentLoaded", () => {
     if (!DATA.length) setWarning("No Peace and Governance records found. Please run generate-data-js.py and confirm the All Outputs sheet has Output = Peace and Governance.");
     initFilters();
+    initViewTabs();
+    initMapSelector();
     initMap();
     updateDashboard();
+    renderMapSelectorList();
   });
 })();

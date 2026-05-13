@@ -44,10 +44,34 @@ document.addEventListener("DOMContentLoaded", () => {
   const countyFilter = document.getElementById("county-filter");
   const resetBtn = document.getElementById("reset-filters");
 
+  const openMapSelectorBtn = document.getElementById("open-map-selector");
+  const closeMapSelectorBtn = document.getElementById("close-map-selector");
+  const mapDrawerOverlay = document.getElementById("map-drawer-overlay");
+  const mapSelectorDrawer = document.getElementById("map-selector-drawer");
+  const mapSelectorSearch = document.getElementById("map-selector-search");
+  const mapSelectorType = document.getElementById("map-selector-type");
+  const mapSelectorSort = document.getElementById("map-selector-sort");
+  const mapSelectorList = document.getElementById("map-selector-list");
+  const mapSelectorCount = document.getElementById("map-selector-count");
+  const clearMapSelectionBtn = document.getElementById("clear-map-selection");
+  const applyMapSelectionBtn = document.getElementById("apply-map-selection");
+  const activeMapFilterPill = document.getElementById("active-map-filter-pill");
+
+  const viewMapBtn = document.getElementById("view-map-btn");
+  const viewAgencyRankingBtn = document.getElementById("view-agency-ranking-btn");
+  const basicMapViewPanel = document.getElementById("basic-map-view-panel");
+  const basicAgencyRankingPanel = document.getElementById("basic-agency-ranking-panel");
+
+  let selectedMapStates = new Set();
+  let selectedMapCounties = new Set();
+  let pendingMapStates = new Set();
+  let pendingMapCounties = new Set();
+
   let basicMap = null;
   let countyLayer = null;
   let countyGeoJson = null;
   let mapInitialized = false;
+  let activeVisualView = "map";
 
   function clean(value) {
     const v = value === undefined || value === null ? "" : String(value).trim();
@@ -269,12 +293,20 @@ function animateCount(el, target) {
     const state = stateFilter.value || "All";
     const county = countyFilter.value || "All";
 
-    return sectorRecords().filter(r =>
-      (indicator === "All" || r.indicator === indicator) &&
-      (agency === "All" || r.agency === agency) &&
-      (state === "All" || r.state === state) &&
-      (county === "All" || r.county === county)
-    );
+    return sectorRecords().filter(r => {
+      const matchesTopFilters =
+        (indicator === "All" || r.indicator === indicator) &&
+        (agency === "All" || r.agency === agency) &&
+        (state === "All" || r.state === state) &&
+        (county === "All" || r.county === county);
+
+      const hasMapSelection = selectedMapStates.size > 0 || selectedMapCounties.size > 0;
+      const matchesMapSelection = !hasMapSelection ||
+        selectedMapStates.has(r.state) ||
+        selectedMapCounties.has(r.county);
+
+      return matchesTopFilters && matchesMapSelection;
+    });
   }
 function refreshDependentFilters(changedFilter = "") {
 
@@ -784,14 +816,16 @@ function refreshDependentFilters(changedFilter = "") {
 
   function styleCounty(feature, countyData, minValue, maxValue) {
     const countyName = feature.properties.ADM2_EN || "";
+    const stateName = feature.properties.ADM1_EN || "";
     const d = countyData[normName(countyName)];
     const value = d ? d.current : 0;
+    const isSelected = selectedMapStates.has(stateName) || selectedMapCounties.has(countyName);
 
     return {
       fillColor: getColor(value, minValue, maxValue),
-      weight: 0.9,
+      weight: isSelected ? 2.4 : 0.9,
       opacity: 1,
-      color: value > 0 ? "rgba(220,235,250,0.75)" : "rgba(160,160,160,0.35)",
+      color: isSelected ? "#ffffff" : (value > 0 ? "rgba(220,235,250,0.75)" : "rgba(160,160,160,0.35)"),
       fillOpacity: value > 0 ? 0.85 : 0.42
     };
   }
@@ -963,6 +997,203 @@ function refreshDependentFilters(changedFilter = "") {
           </div>
         `).join("")
       : `<div class="top-empty">No county data available</div>`;
+  }
+
+
+  function getRowsForMapSelector() {
+    const indicator = indicatorFilter.value || "All";
+    const agency = agencyFilter.value || "All";
+
+    return geoRows(sectorRecords()).filter(r =>
+      (indicator === "All" || r.indicator === indicator) &&
+      (agency === "All" || r.agency === agency)
+    );
+  }
+
+  function buildMapSelectorItems() {
+    const rows = getRowsForMapSelector();
+    const stateMap = {};
+    const countyMap = {};
+
+    rows.forEach(r => {
+      const value = getBeneficiaryValue(r);
+
+      if (r.state && r.state !== "Unknown") {
+        if (!stateMap[r.state]) {
+          stateMap[r.state] = { type: "State", name: r.state, state: r.state, current: 0 };
+        }
+        stateMap[r.state].current += value;
+      }
+
+      if (r.county && r.county !== "Unknown") {
+        const key = `${r.state}||${r.county}`;
+        if (!countyMap[key]) {
+          countyMap[key] = { type: "County", name: r.county, state: r.state, current: 0 };
+        }
+        countyMap[key].current += value;
+      }
+    });
+
+    return [...Object.values(stateMap), ...Object.values(countyMap)];
+  }
+
+  function updateMapSelectionPill() {
+    if (!activeMapFilterPill) return;
+
+    const total = selectedMapStates.size + selectedMapCounties.size;
+
+    if (!total) {
+      activeMapFilterPill.style.display = "none";
+      activeMapFilterPill.textContent = "";
+      return;
+    }
+
+    const labelParts = [];
+    if (selectedMapStates.size) labelParts.push(`${selectedMapStates.size} state/admin area`);
+    if (selectedMapCounties.size) labelParts.push(`${selectedMapCounties.size} county`);
+
+    activeMapFilterPill.style.display = "inline-flex";
+    activeMapFilterPill.textContent = `Map filter: ${labelParts.join(", ")}`;
+  }
+
+  function syncPendingFromAppliedSelection() {
+    pendingMapStates = new Set(selectedMapStates);
+    pendingMapCounties = new Set(selectedMapCounties);
+  }
+
+  function clearAppliedMapSelectionOnly() {
+    selectedMapStates.clear();
+    selectedMapCounties.clear();
+    pendingMapStates.clear();
+    pendingMapCounties.clear();
+    updateMapSelectionPill();
+  }
+
+  function renderMapSelectorList() {
+    if (!mapSelectorList) return;
+
+    const search = (mapSelectorSearch?.value || "").trim().toLowerCase();
+    const typeFilter = mapSelectorType?.value || "All";
+    const sortValue = mapSelectorSort?.value || "value-desc";
+
+    let items = buildMapSelectorItems();
+
+    if (typeFilter !== "All") {
+      items = items.filter(item => item.type === typeFilter);
+    }
+
+    if (search) {
+      items = items.filter(item =>
+        item.name.toLowerCase().includes(search) ||
+        item.state.toLowerCase().includes(search) ||
+        item.type.toLowerCase().includes(search)
+      );
+    }
+
+    if (sortValue === "value-desc") {
+      items.sort((a, b) => b.current - a.current || a.name.localeCompare(b.name));
+    } else if (sortValue === "value-asc") {
+      items.sort((a, b) => a.current - b.current || a.name.localeCompare(b.name));
+    } else {
+      items.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const selectedCount = pendingMapStates.size + pendingMapCounties.size;
+    if (mapSelectorCount) {
+      mapSelectorCount.textContent = `${selectedCount} selected`;
+    }
+
+    if (!items.length) {
+      mapSelectorList.innerHTML = `<div class="drawer-empty">No states or counties match the current search.</div>`;
+      return;
+    }
+
+    mapSelectorList.innerHTML = items.map(item => {
+      const checked = item.type === "State"
+        ? pendingMapStates.has(item.name)
+        : pendingMapCounties.has(item.name);
+
+      const meta = item.type === "State"
+        ? "State/Admin Area"
+        : `County · ${item.state}`;
+
+      return `
+        <label class="drawer-row" data-type="${escapeHtml(item.type)}" data-name="${escapeHtml(item.name)}">
+          <input type="checkbox" ${checked ? "checked" : ""} data-type="${escapeHtml(item.type)}" data-name="${escapeHtml(item.name)}" data-state="${escapeHtml(item.state)}"/>
+          <div>
+            <div class="drawer-name">${escapeHtml(item.name)}</div>
+            <div class="drawer-meta">${escapeHtml(meta)}</div>
+          </div>
+          <div class="drawer-value">${fmt(item.current)}</div>
+        </label>
+      `;
+    }).join("");
+
+    mapSelectorList.querySelectorAll("input[type='checkbox']").forEach(input => {
+      input.addEventListener("change", () => {
+        const type = input.dataset.type;
+        const name = input.dataset.name;
+
+        if (type === "State") {
+          if (input.checked) pendingMapStates.add(name);
+          else pendingMapStates.delete(name);
+        }
+
+        if (type === "County") {
+          if (input.checked) pendingMapCounties.add(name);
+          else pendingMapCounties.delete(name);
+        }
+
+        if (mapSelectorCount) {
+          mapSelectorCount.textContent = `${pendingMapStates.size + pendingMapCounties.size} selected`;
+        }
+      });
+    });
+  }
+
+  function openMapSelector() {
+    syncPendingFromAppliedSelection();
+    renderMapSelectorList();
+
+    mapDrawerOverlay?.classList.add("open");
+    mapSelectorDrawer?.classList.add("open");
+    if (mapSelectorDrawer) mapSelectorDrawer.setAttribute("aria-hidden", "false");
+
+    setTimeout(() => mapSelectorSearch?.focus(), 120);
+  }
+
+  function closeMapSelector() {
+    mapDrawerOverlay?.classList.remove("open");
+    mapSelectorDrawer?.classList.remove("open");
+    if (mapSelectorDrawer) mapSelectorDrawer.setAttribute("aria-hidden", "true");
+  }
+
+  function clearMapSelection() {
+    pendingMapStates.clear();
+    pendingMapCounties.clear();
+    selectedMapStates.clear();
+    selectedMapCounties.clear();
+
+    stateFilter.value = "All";
+    countyFilter.value = "All";
+
+    updateMapSelectionPill();
+    renderMapSelectorList();
+    renderDashboard();
+  }
+
+  function applyMapSelection() {
+    selectedMapStates = new Set(pendingMapStates);
+    selectedMapCounties = new Set(pendingMapCounties);
+
+    // Keep the drawer selection as the main geographic filter.
+    // This avoids conflict with the existing dropdowns.
+    stateFilter.value = "All";
+    countyFilter.value = "All";
+
+    updateMapSelectionPill();
+    closeMapSelector();
+    renderDashboard();
   }
 
   function renderSimpleInsights(rows, rowsForGeo) {
@@ -1199,8 +1430,105 @@ function refreshDependentFilters(changedFilter = "") {
     renderCards(insights);
   }
 
+
+  function setVisualView(viewName) {
+    activeVisualView = viewName === "agency" ? "agency" : "map";
+
+    viewMapBtn?.classList.toggle("active", activeVisualView === "map");
+    viewAgencyRankingBtn?.classList.toggle("active", activeVisualView === "agency");
+
+    if (viewMapBtn) viewMapBtn.setAttribute("aria-selected", activeVisualView === "map" ? "true" : "false");
+    if (viewAgencyRankingBtn) viewAgencyRankingBtn.setAttribute("aria-selected", activeVisualView === "agency" ? "true" : "false");
+
+    basicMapViewPanel?.classList.toggle("active", activeVisualView === "map");
+    basicAgencyRankingPanel?.classList.toggle("active", activeVisualView === "agency");
+
+    if (activeVisualView === "map" && basicMap) {
+      setTimeout(() => basicMap.invalidateSize(), 180);
+    }
+
+    if (activeVisualView === "agency" && typeof Plotly !== "undefined") {
+      const chart = document.getElementById("agency-ranking-chart");
+      if (chart) setTimeout(() => Plotly.Plots.resize(chart), 120);
+    }
+  }
+
+  function setPlainText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function renderAgencyRankingView(rows) {
+    const el = document.getElementById("agency-ranking-chart");
+    if (!el || typeof Plotly === "undefined") return;
+
+    const agencyTotals = groupSum(rows, "agency");
+    const entries = Object.entries(agencyTotals)
+      .filter(([name, value]) => name && name !== "Unknown" && Number(value) > 0)
+      .sort((a, b) => Number(b[1]) - Number(a[1]));
+
+    const total = entries.reduce((s, [, value]) => s + Number(value || 0), 0);
+    const leading = entries[0];
+
+    setPlainText("agency-rank-leading", leading ? leading[0] : "—");
+    setPlainText("agency-rank-share", leading && total ? `${((leading[1] / total) * 100).toFixed(1)}%` : "—");
+    setPlainText("agency-rank-total", fmt(total));
+
+    if (!entries.length) {
+      Plotly.purge("agency-ranking-chart");
+      el.innerHTML = `<div class="empty-chart">No agency ranking data available</div>`;
+      return;
+    }
+
+    const chartEntries = entries.slice(0, 14).reverse();
+    const names = chartEntries.map(d => d[0]);
+    const values = chartEntries.map(d => Number(d[1] || 0));
+    const maxValue = Math.max(...values);
+
+    Plotly.newPlot("agency-ranking-chart", [{
+      type: "bar",
+      orientation: "h",
+      y: names,
+      x: values,
+      marker: {
+        color: names.map((name, index) => getAgencyColor(name, index)),
+        line: { color: "rgba(255,255,255,0.16)", width: 1 }
+      },
+      text: values.map(v => fmt(v)),
+      textposition: "outside",
+      customdata: values.map(v => total ? (v / total) * 100 : 0),
+      cliponaxis: false,
+      hovertemplate: `<b>%{y}</b><br>${metricLabel()}: %{x:,}<br>Share of filtered total: %{customdata:.1f}%<extra></extra>`
+    }], {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font: { color: "#8ba8c4", family: "Inter, sans-serif" },
+      margin: { t: 20, r: 135, b: 55, l: 220 },
+      bargap: 0.28,
+      xaxis: {
+        range: [0, maxValue * 1.18],
+        gridcolor: "rgba(0,158,219,0.12)",
+        zeroline: false,
+        tickfont: { size: 11 },
+        automargin: true
+      },
+      yaxis: {
+        automargin: true,
+        tickfont: { size: 12 }
+      }
+    }, {
+      displayModeBar: false,
+      responsive: true
+    });
+  }
+
   async function renderDashboard(changedFilter = "") {
     refreshDependentFilters(changedFilter);
+
+    updateMapSelectionPill();
+    if (mapSelectorDrawer?.classList.contains("open")) {
+      renderMapSelectorList();
+    }
 
     const rows = getFilteredRecords();
     const rowsForGeo = geoRows(rows);
@@ -1223,6 +1551,7 @@ function refreshDependentFilters(changedFilter = "") {
 
     renderStackedAgencyBarChart("state-chart", rowsForStateCountyCharts, "state", 13);
     renderStackedAgencyBarChart("county-chart", rowsForStateCountyCharts, "county", 12);
+    renderAgencyRankingView(rowsForAgencyCharts);
 
     setText("map-section-title", `Geographical Coverage by ${metricLabel()}`);
 
@@ -1249,14 +1578,37 @@ function refreshDependentFilters(changedFilter = "") {
 
     indicatorFilter.addEventListener("change", () => renderDashboard("indicator"));
     agencyFilter.addEventListener("change", () => renderDashboard("agency"));
-    stateFilter.addEventListener("change", () => renderDashboard("state"));
-    countyFilter.addEventListener("change", () => renderDashboard("county"));
+    stateFilter.addEventListener("change", () => {
+      clearAppliedMapSelectionOnly();
+      renderDashboard("state");
+    });
+    countyFilter.addEventListener("change", () => {
+      clearAppliedMapSelectionOnly();
+      renderDashboard("county");
+    });
+
+    viewMapBtn?.addEventListener("click", () => setVisualView("map"));
+    viewAgencyRankingBtn?.addEventListener("click", () => setVisualView("agency"));
+
+    openMapSelectorBtn?.addEventListener("click", openMapSelector);
+    closeMapSelectorBtn?.addEventListener("click", closeMapSelector);
+    mapDrawerOverlay?.addEventListener("click", closeMapSelector);
+    mapSelectorSearch?.addEventListener("input", renderMapSelectorList);
+    mapSelectorType?.addEventListener("change", renderMapSelectorList);
+    mapSelectorSort?.addEventListener("change", renderMapSelectorList);
+    clearMapSelectionBtn?.addEventListener("click", clearMapSelection);
+    applyMapSelectionBtn?.addEventListener("click", applyMapSelection);
+
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") closeMapSelector();
+    });
 
     resetBtn.addEventListener("click", () => {
       indicatorFilter.value = "All";
       agencyFilter.value = "All";
       stateFilter.value = "All";
       countyFilter.value = "All";
+      clearAppliedMapSelectionOnly();
       renderDashboard();
     });
 
@@ -1265,6 +1617,7 @@ function refreshDependentFilters(changedFilter = "") {
         currentSector = btn.dataset.sector;
         document.querySelectorAll(".sector-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
+        clearAppliedMapSelectionOnly();
         renderDashboard("sector");
       });
     });
@@ -1328,6 +1681,18 @@ function refreshDependentFilters(changedFilter = "") {
         .forEach(([n, v]) => csvRows.push([n, v]));
     }
 
+    if (type === "agency") {
+      const rowsForAgencyCsv = selectedIsAncCoverage() ? rowsForGeo : agencyCountRows(rowsForGeo);
+      csvRows = [["Reporting Entity", metricLabel(), "Share %"]];
+      const agencyEntries = Object.entries(groupSum(rowsForAgencyCsv, "agency"))
+        .filter(([n, v]) => n && n !== "Unknown" && v > 0)
+        .sort((a, b) => b[1] - a[1]);
+      const agencyTotal = agencyEntries.reduce((s, [, v]) => s + Number(v || 0), 0);
+      agencyEntries.forEach(([n, v]) => {
+        csvRows.push([n, v, agencyTotal ? ((v / agencyTotal) * 100).toFixed(1) : "0.0"]);
+      });
+    }
+
     if (type === "indicatorAgency") {
       csvRows = [["Sector", "Indicator", "Reporting Agencies", "Current Number", "Target", "Achievement %"]];
 
@@ -1370,7 +1735,7 @@ function refreshDependentFilters(changedFilter = "") {
   renderDashboard();
 
   window.addEventListener("resize", () => {
-    ["state-chart", "county-chart", "indicator-agency-chart"].forEach(id => {
+    ["state-chart", "county-chart", "indicator-agency-chart", "agency-ranking-chart"].forEach(id => {
       const el = document.getElementById(id);
       if (el && typeof Plotly !== "undefined") Plotly.Plots.resize(el);
     });

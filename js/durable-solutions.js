@@ -40,6 +40,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let countyGeoJson = null;
   let mapInitialized = false;
 
+  let selectedMapStates = new Set();
+  let selectedMapCounties = new Set();
+  let activeMapSelectorTab = "states";
+
   function clean(value) {
     const v = value === undefined || value === null ? "" : String(value).trim();
     return v || "Unknown";
@@ -190,13 +194,20 @@ function animateCount(el, target) {
     const agency = agencyFilter.value || "All";
     const state = stateFilter.value || "All";
     const county = countyFilter.value || "All";
+    const hasMapSelection = selectedMapStates.size > 0 || selectedMapCounties.size > 0;
 
-    return categoryRecords().filter(r =>
-      (indicator === "All" || r.indicator === indicator) &&
-      (agency === "All" || r.agency === agency) &&
-      (state === "All" || r.state === state) &&
-      (county === "All" || r.county === county)
-    );
+    return categoryRecords().filter(r => {
+      const dropdownMatch =
+        (indicator === "All" || r.indicator === indicator) &&
+        (agency === "All" || r.agency === agency) &&
+        (state === "All" || r.state === state) &&
+        (county === "All" || r.county === county);
+
+      if (!dropdownMatch) return false;
+      if (!hasMapSelection) return true;
+
+      return selectedMapStates.has(r.state) || selectedMapCounties.has(r.county);
+    });
   }
 
   function filterRowsForOptions(excludeFilter = "") {
@@ -210,6 +221,20 @@ function animateCount(el, target) {
       (excludeFilter === "agency" || agency === "All" || r.agency === agency) &&
       (excludeFilter === "state" || state === "All" || r.state === state) &&
       (excludeFilter === "county" || county === "All" || r.county === county)
+    );
+  }
+
+  function getRowsForMapSelector() {
+    const indicator = indicatorFilter.value || "All";
+    const agency = agencyFilter.value || "All";
+    const state = stateFilter.value || "All";
+    const county = countyFilter.value || "All";
+
+    return geoRows(categoryRecords()).filter(r =>
+      (indicator === "All" || r.indicator === indicator) &&
+      (agency === "All" || r.agency === agency) &&
+      (state === "All" || r.state === state) &&
+      (county === "All" || r.county === county)
     );
   }
 
@@ -589,6 +614,80 @@ function animateCount(el, target) {
     el.innerHTML = "";
   }
 
+
+  function renderAgencyRankingChart(rowsForGeo) {
+    const el = document.getElementById("agency-ranking-chart");
+    if (!el || typeof Plotly === "undefined") return;
+
+    if (!isSingleIndicatorSelected()) {
+      Plotly.purge("agency-ranking-chart");
+      el.innerHTML = `
+        <div class="empty-chart" style="display:flex;align-items:center;justify-content:center;text-align:center;min-height:360px;padding:28px;line-height:1.5;">
+          Select one indicator to view agency ranking. This prevents mixing people, facilities, consultations, officials, kilometres, and other units in one ranking.
+        </div>
+      `;
+      return;
+    }
+
+    const agencyTotals = groupSum(rowsForGeo, "agency", true);
+    const entries = Object.entries(agencyTotals)
+      .filter(([name, value]) => name && name !== "Unknown" && Number(value) > 0)
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .slice(0, 12)
+      .reverse();
+
+    if (!entries.length) {
+      Plotly.purge("agency-ranking-chart");
+      el.innerHTML = `<div class="empty-chart">No agency ranking data available for the selected filters.</div>`;
+      return;
+    }
+
+    const values = entries.map(d => Number(d[1] || 0));
+    const total = values.reduce((s, v) => s + v, 0);
+    const maxValue = Math.max(...values);
+    const label = metricLabel(rowsForGeo, true);
+
+    Plotly.newPlot("agency-ranking-chart", [{
+      type: "bar",
+      orientation: "h",
+      y: entries.map(d => d[0]),
+      x: values,
+      marker: {
+        color: "#00AEEF",
+        line: { color: "rgba(255,255,255,0.16)", width: 1 }
+      },
+      text: values.map(v => fmt(v)),
+      textposition: "outside",
+      customdata: values.map(v => total ? (v / total) * 100 : 0),
+      cliponaxis: false,
+      hovertemplate:
+        "<b>%{y}</b><br>" +
+        "Reported value: %{x:,}<br>" +
+        "Share: %{customdata:.1f}%<br>" +
+        "Unit: " + escapeHtml(label) +
+        "<extra></extra>"
+    }], {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      font: { color: "#8ba8c4", family: "Inter, sans-serif" },
+      margin: { t: 20, r: maxValue > 999999 ? 125 : 95, b: 55, l: 230 },
+      bargap: 0.32,
+      xaxis: {
+        gridcolor: "rgba(0,158,219,0.12)",
+        zeroline: false,
+        tickfont: { size: 11 },
+        automargin: true
+      },
+      yaxis: {
+        automargin: true,
+        tickfont: { size: 12 }
+      }
+    }, {
+      displayModeBar: false,
+      responsive: true
+    });
+  }
+
   function renderControlledCharts(rowsForGeo) {
     const hasSingleIndicator = isSingleIndicatorSelected();
     const peopleBased = hasSingleIndicator && isPeopleBasedSelection(rowsForGeo);
@@ -866,9 +965,21 @@ function animateCount(el, target) {
 
   function styleCounty(feature, countyData, minValue, maxValue, hasSingleIndicator) {
     const countyName = feature.properties.ADM2_EN || "";
+    const stateName = feature.properties.ADM1_EN || "";
     const d = countyData[normName(countyName)];
     const hasData = !!d;
     const value = d ? d.current : 0;
+    const isSelected = selectedMapStates.has(stateName) || selectedMapCounties.has(countyName);
+
+    if (isSelected) {
+      return {
+        fillColor: hasSingleIndicator ? getColor(value, minValue, maxValue) : "#8fc7e8",
+        weight: 2.4,
+        opacity: 1,
+        color: "#ffffff",
+        fillOpacity: 0.95
+      };
+    }
 
     if (!hasSingleIndicator) {
       return {
@@ -1113,6 +1224,223 @@ function animateCount(el, target) {
       : `<div class="top-empty">No county data available</div>`;
   }
 
+  function injectMapSelectorStyles() {
+    if (document.getElementById("map-selector-styles")) return;
+
+    const style = document.createElement("style");
+    style.id = "map-selector-styles";
+    style.textContent = `
+      .map-selector-toolbar{display:flex;justify-content:flex-end;margin:-4px 0 12px 0;}
+      .map-selector-btn{border:1px solid rgba(120,190,255,.45);background:rgba(13,47,83,.75);color:#fff;border-radius:12px;padding:11px 16px;font-weight:800;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.18);}
+      .map-selector-btn:hover{background:rgba(0,158,219,.22);border-color:rgba(0,158,219,.75);}
+      .map-selector-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;opacity:0;pointer-events:none;transition:.2s ease;}
+      .map-selector-backdrop.open{opacity:1;pointer-events:auto;}
+      .map-selector-drawer{position:fixed;top:0;right:0;width:min(430px,92vw);height:100vh;background:#f8fafc;color:#334155;z-index:9999;transform:translateX(105%);transition:transform .25s ease;box-shadow:-20px 0 45px rgba(0,0,0,.35);padding:24px;overflow:auto;}
+      .map-selector-drawer.open{transform:translateX(0);}
+      .map-selector-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px;}
+      .map-selector-title{font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#475569;}
+      .map-selector-subtitle{font-size:13px;color:#64748b;margin-top:4px;}
+      .map-selector-close{width:42px;height:42px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:30px;line-height:1;cursor:pointer;}
+      .map-selector-search{width:100%;height:48px;border:1px solid #cbd5e1;border-radius:8px;padding:0 14px;font-size:15px;color:#334155;background:#fff;}
+      .map-selector-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0;}
+      .map-selector-tab{border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#475569;padding:11px;font-weight:800;cursor:pointer;}
+      .map-selector-tab.active{background:#dbeafe;color:#0f4c81;border-color:#bfdbfe;}
+      .map-selector-actions{display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:12px;}
+      .map-selector-sort{height:44px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;padding:0 10px;font-weight:700;min-width:0;}
+      .map-selector-clear{height:44px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#475569;padding:0 12px;font-weight:800;cursor:pointer;}
+      .map-selector-selected{font-size:13px;color:#64748b;margin:8px 0 14px 0;padding:9px 11px;background:#eef2f7;border-radius:8px;}
+      .map-selector-list{display:flex;flex-direction:column;gap:2px;}
+      .map-selector-row{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;min-height:48px;border-bottom:1px solid #e5e7eb;padding:6px 0;cursor:pointer;}
+      .map-selector-row:hover{background:#eef6ff;}
+      .map-selector-row input{width:18px;height:18px;accent-color:#0ea5e9;}
+      .map-selector-name{font-size:15px;color:#334155;font-weight:700;}
+      .map-selector-meta{font-size:12px;color:#64748b;margin-top:2px;}
+      .map-selector-value{font-size:15px;color:#475569;font-weight:800;text-align:right;}
+      .map-selector-bar{grid-column:2 / 4;height:5px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:-4px;}
+      .map-selector-fill{height:100%;background:#93c5fd;border-radius:99px;}
+      @media(max-width:720px){.map-selector-toolbar{justify-content:stretch}.map-selector-btn{width:100%;}.map-selector-drawer{padding:18px;}}
+    `;
+    document.head.appendChild(style);
+  }
+
+
+  function setupViewTabs() {
+    const mapTab = document.getElementById("map-view-tab");
+    const agencyTab = document.getElementById("agency-ranking-tab");
+    const mapPanel = document.getElementById("map-view-panel");
+    const agencyPanel = document.getElementById("agency-ranking-panel");
+
+    if (!mapTab || !agencyTab || !mapPanel || !agencyPanel || mapTab.dataset.ready === "1") return;
+    mapTab.dataset.ready = "1";
+
+    function activate(view) {
+      const showMap = view === "map";
+
+      mapTab.classList.toggle("active", showMap);
+      agencyTab.classList.toggle("active", !showMap);
+      mapPanel.classList.toggle("active", showMap);
+      agencyPanel.classList.toggle("active", !showMap);
+
+      if (showMap && durableMap) {
+        setTimeout(() => durableMap.invalidateSize(), 180);
+      }
+
+      if (!showMap && typeof Plotly !== "undefined") {
+        const chart = document.getElementById("agency-ranking-chart");
+        if (chart) setTimeout(() => Plotly.Plots.resize(chart), 120);
+      }
+    }
+
+    mapTab.addEventListener("click", () => activate("map"));
+    agencyTab.addEventListener("click", () => activate("agency"));
+  }
+
+  function setupMapSelector() {
+    injectMapSelectorStyles();
+
+    const openBtn = document.getElementById("open-map-selector");
+    const closeBtn = document.getElementById("close-map-selector");
+    const drawer = document.getElementById("map-selector-drawer");
+    const backdrop = document.getElementById("map-selector-backdrop");
+    const search = document.getElementById("map-selector-search");
+    const sort = document.getElementById("map-selector-sort");
+    const clear = document.getElementById("map-selector-clear");
+
+    if (!openBtn || !drawer || drawer.dataset.ready === "1") return;
+    drawer.dataset.ready = "1";
+
+    function openDrawer() {
+      renderMapSelectorList();
+      drawer.classList.add("open");
+      backdrop?.classList.add("open");
+      drawer.setAttribute("aria-hidden", "false");
+      setTimeout(() => search?.focus(), 80);
+    }
+
+    function closeDrawer() {
+      drawer.classList.remove("open");
+      backdrop?.classList.remove("open");
+      drawer.setAttribute("aria-hidden", "true");
+    }
+
+    openBtn.addEventListener("click", openDrawer);
+    closeBtn?.addEventListener("click", closeDrawer);
+    backdrop?.addEventListener("click", closeDrawer);
+    search?.addEventListener("input", renderMapSelectorList);
+    sort?.addEventListener("change", renderMapSelectorList);
+    clear?.addEventListener("click", () => {
+      selectedMapStates.clear();
+      selectedMapCounties.clear();
+      renderDashboard("mapSelector");
+    });
+
+    document.querySelectorAll("[data-map-selector-tab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        activeMapSelectorTab = btn.dataset.mapSelectorTab || "states";
+        document.querySelectorAll("[data-map-selector-tab]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderMapSelectorList();
+      });
+    });
+  }
+
+  function buildMapSelectorItems() {
+    const rows = getRowsForMapSelector();
+    const grouped = {};
+    const isStates = activeMapSelectorTab === "states";
+
+    rows.forEach(r => {
+      const name = isStates ? r.state : r.county;
+      if (!name || name === "Unknown") return;
+
+      if (!grouped[name]) {
+        grouped[name] = {
+          name,
+          meta: isStates ? "State/Admin Area" : r.state,
+          value: 0,
+          counties: new Set(),
+          agencies: new Set(),
+          indicators: new Set()
+        };
+      }
+
+      grouped[name].value += reportedValue(r);
+      grouped[name].counties.add(r.county);
+      grouped[name].agencies.add(r.agency);
+      grouped[name].indicators.add(r.indicator);
+    });
+
+    return Object.values(grouped);
+  }
+
+  function renderMapSelectorSummary() {
+    const el = document.getElementById("map-selector-selected");
+    const btn = document.getElementById("open-map-selector");
+    if (!el) return;
+
+    const parts = [];
+    if (selectedMapStates.size) parts.push(`${selectedMapStates.size} state(s)`);
+    if (selectedMapCounties.size) parts.push(`${selectedMapCounties.size} county/counties`);
+
+    el.textContent = parts.length ? `Selected: ${parts.join(" · ")}` : "No map filter selected";
+    if (btn) btn.textContent = parts.length ? `✎ Map filter: ${parts.join(" · ")}` : "✎ Select states / counties";
+  }
+
+  function renderMapSelectorList() {
+    const list = document.getElementById("map-selector-list");
+    if (!list) return;
+
+    const query = normText(document.getElementById("map-selector-search")?.value || "");
+    const sort = document.getElementById("map-selector-sort")?.value || "value-desc";
+    const isStates = activeMapSelectorTab === "states";
+    const selectedSet = isStates ? selectedMapStates : selectedMapCounties;
+
+    let items = buildMapSelectorItems().filter(item => !query || normText(item.name).includes(query) || normText(item.meta).includes(query));
+
+    if (sort === "name-asc") items.sort((a, b) => a.name.localeCompare(b.name));
+    else items.sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+
+    const maxValue = Math.max(1, ...items.map(i => i.value));
+
+    renderMapSelectorSummary();
+
+    if (!items.length) {
+      list.innerHTML = `<div class="top-empty" style="color:#64748b;background:#eef2f7;border-radius:8px;padding:14px;">No matching location found.</div>`;
+      return;
+    }
+
+    list.innerHTML = items.map(item => {
+      const checked = selectedSet.has(item.name) ? "checked" : "";
+      const valueText = isSingleIndicatorSelected() ? fmt(item.value) : `${fmt(item.counties.size)} counties`;
+      const metaText = isStates
+        ? `${fmt(item.agencies.size)} entities · ${fmt(item.indicators.size)} indicators`
+        : `${escapeHtml(item.meta)} · ${fmt(item.agencies.size)} entities`;
+      const width = Math.max(4, (item.value / maxValue) * 100);
+
+      return `
+        <label class="map-selector-row">
+          <input type="checkbox" data-map-selector-name="${escapeHtml(item.name)}" ${checked}/>
+          <div>
+            <div class="map-selector-name">${escapeHtml(item.name)}</div>
+            <div class="map-selector-meta">${metaText}</div>
+          </div>
+          <div class="map-selector-value">${valueText}</div>
+          <div class="map-selector-bar"><div class="map-selector-fill" style="width:${width}%"></div></div>
+        </label>
+      `;
+    }).join("");
+
+    list.querySelectorAll("input[data-map-selector-name]").forEach(input => {
+      input.addEventListener("change", () => {
+        const name = input.dataset.mapSelectorName;
+        if (!name) return;
+        if (input.checked) selectedSet.add(name);
+        else selectedSet.delete(name);
+        renderDashboard("mapSelector");
+      });
+    });
+  }
+
   async function renderDashboard(changedFilter = "") {
     refreshDependentFilters(changedFilter);
 
@@ -1123,15 +1451,19 @@ function animateCount(el, target) {
     renderSimpleInsights(rows, rowsForGeo);
     renderIndicatorTable(rows);
     renderControlledCharts(rowsForGeo);
+    renderAgencyRankingChart(rowsForGeo);
 
     if (!mapInitialized) {
       await initDurableMap();
     }
 
     renderDurableMap(rowsForGeo);
+    renderMapSelectorList();
   }
 
   function initializeFilters() {
+    setupViewTabs();
+    setupMapSelector();
     setOptions(indicatorFilter, uniqueSorted(categoryRecords().map(r => r.indicator)));
     setOptions(agencyFilter, uniqueSorted(categoryRecords().map(r => r.agency)));
     setOptions(stateFilter, uniqueSorted(geoRows(categoryRecords()).map(r => r.state)));
@@ -1147,12 +1479,16 @@ function animateCount(el, target) {
       agencyFilter.value = "All";
       stateFilter.value = "All";
       countyFilter.value = "All";
+      selectedMapStates.clear();
+      selectedMapCounties.clear();
       renderDashboard();
     });
 
     document.querySelectorAll(".sector-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         currentCategory = btn.dataset.category;
+        selectedMapStates.clear();
+        selectedMapCounties.clear();
         document.querySelectorAll(".sector-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         renderDashboard("category");
@@ -1180,7 +1516,7 @@ function animateCount(el, target) {
   renderDashboard();
 
   window.addEventListener("resize", () => {
-    ["state-chart", "county-chart", "population-chart"].forEach(id => {
+    ["state-chart", "county-chart", "population-chart", "agency-ranking-chart"].forEach(id => {
       const el = document.getElementById(id);
       if (el && typeof Plotly !== "undefined") Plotly.Plots.resize(el);
     });
