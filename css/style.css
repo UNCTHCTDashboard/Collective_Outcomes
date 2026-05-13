@@ -232,7 +232,7 @@ img { max-width: 100%; }
 /* Layout */
 .container {
   width: 100%;
-  max-width: none;
+  max-width: 1700;
   margin: 0 auto;
   padding-left: 32px;
   padding-right: 32px;
@@ -1302,4 +1302,639 @@ footer p {
   width: 100%;
   height: 700px;
   border-radius: 12px;
+}
+
+/* =========================================================
+   OVERVIEW MAP ENHANCEMENTS
+   Outcome toggle, better popup, hover highlight, county search,
+   and dynamic summary controls.
+========================================================= */
+.overview-map-header { gap: 16px; }
+.overview-map-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.overview-map-tools { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 16px; background: rgba(7, 26, 46, 0.55); border-top: 1px solid rgba(0, 158, 219, 0.18); border-bottom: 1px solid rgba(0, 158, 219, 0.18); flex-wrap: wrap; }
+.overview-outcome-toggle { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.overview-outcome-btn { min-height: 34px; padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(0, 158, 219, 0.25); background: rgba(7, 26, 46, 0.55); color: #a8c7e6; font-size: 11px; font-weight: 900; cursor: pointer; transition: all 0.22s ease; }
+.overview-outcome-btn:hover { background: rgba(0, 158, 219, 0.18); border-color: rgba(0, 174, 239, 0.55); color: #ffffff; transform: translateY(-1px); }
+.overview-outcome-btn.active { background: linear-gradient(135deg, #00a8ef 0%, #0079bd 100%); border-color: rgba(0, 174, 239, 0.85); color: #ffffff; box-shadow: 0 0 0 3px rgba(0, 158, 219, 0.12), 0 8px 18px rgba(0,0,0,0.22); }
+.overview-search-wrap { position: relative; width: min(320px, 100%); flex-shrink: 0; }
+#overviewCountySearch { width: 100%; min-height: 38px; border-radius: 12px; border: 1px solid rgba(0, 158, 219, 0.32); background: rgba(7, 26, 46, 0.72); color: #ffffff; padding: 8px 38px 8px 14px; font-size: 12px; font-weight: 800; outline: none; }
+#overviewCountySearch::placeholder { color: #7fa9cc; }
+#overviewCountySearch:focus { border-color: rgba(0,174,239,0.75); box-shadow: 0 0 0 3px rgba(0,158,219,0.14); }
+#overviewSearchClear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,158,219,0.16); color: #dff4ff; font-size: 16px; font-weight: 900; cursor: pointer; }
+.overview-search-results { display: none; position: absolute; top: calc(100% + 7px); left: 0; right: 0; z-index: 1200; background: #0b223d; border: 1px solid rgba(0,158,219,0.36); border-radius: 12px; box-shadow: 0 14px 28px rgba(0,0,0,0.38); overflow: hidden; max-height: 280px; overflow-y: auto; }
+.overview-search-results.open { display: block; }
+.overview-search-results button, .overview-search-empty { width: 100%; padding: 10px 12px; border: none; border-bottom: 1px solid rgba(0,158,219,0.13); background: transparent; color: #e8f1fa; text-align: left; cursor: pointer; }
+.overview-search-results button:hover { background: rgba(0,158,219,0.13); }
+.overview-search-results button strong { display: block; font-size: 12px; font-weight: 900; color: #ffffff; }
+.overview-search-results button span { display: block; font-size: 11px; color: #8ba8c4; margin-top: 2px; }
+.overview-search-empty { font-size: 12px; color: #8ba8c4; cursor: default; }
+#overview-map .leaflet-interactive { transition: fill-opacity 0.18s ease, stroke-width 0.18s ease; filter: drop-shadow(0 0 5px rgba(0, 174, 239, 0.04)); }
+#overview-map .leaflet-popup-content { min-width: 285px; }
+#overview-map .popup-row { grid-template-columns: 150px 1fr; }
+#overview-map .popup-section-title { color: #008fd1; letter-spacing: 0.04em; text-transform: uppercase; }
+#overview-map .popup-bullet { padding: 3px 0; color: #1f2937; font-weight: 700; }
+@media (max-width: 900px) { .overview-map-tools { align-items: stretch; } .overview-outcome-toggle, .overview-search-wrap { width: 100%; } .overview-outcome-btn { flex: 1 1 auto; } }
+
+/* =========================================================
+   FIXED OVERVIEW MAP LAYOUT + PHASE 1 CONTROLS
+   This block keeps the Leaflet map visible and restores the
+   right-side cards, outcome toggle, search, popup and hover.
+   Keep at the VERY END of style.css
+========================================================= */
+.overview-map-section {
+  margin-top: 10px;
+}
+
+.overview-map-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 280px !important;
+  gap: 18px !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+.overview-map-card {
+  background: rgba(18, 42, 77, 0.94) !important;
+  border: 1px solid rgba(0, 158, 219, 0.30) !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  box-shadow: var(--shadow-card) !important;
+  min-width: 0 !important;
+}
+
+.overview-map-header {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  padding: 18px 20px !important;
+  background: rgba(18, 42, 77, 0.96) !important;
+  border-bottom: 1px solid rgba(0, 158, 219, 0.22) !important;
+}
+
+.overview-map-title {
+  color: #ffffff !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  margin-bottom: 4px !important;
+}
+
+.overview-map-subtitle {
+  color: #9bb8d4 !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+.overview-map-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 6px 11px !important;
+  border-radius: 999px !important;
+  background: rgba(0, 158, 219, 0.18) !important;
+  border: 1px solid rgba(0, 158, 219, 0.35) !important;
+  color: #8fd7ff !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
+
+.overview-map-tools {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  padding: 12px 16px !important;
+  background: rgba(7, 26, 46, 0.55) !important;
+  border-bottom: 1px solid rgba(0, 158, 219, 0.20) !important;
+  flex-wrap: wrap !important;
+}
+
+.overview-outcome-toggle {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.overview-outcome-btn {
+  min-height: 34px !important;
+  padding: 7px 13px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(0, 158, 219, 0.32) !important;
+  background: rgba(7, 26, 46, 0.55) !important;
+  color: #c8def2 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.overview-outcome-btn:hover {
+  background: rgba(0, 158, 219, 0.18) !important;
+  border-color: rgba(0, 174, 239, 0.60) !important;
+  transform: translateY(-1px) !important;
+}
+
+.overview-outcome-btn.active {
+  background: linear-gradient(135deg, #00a8ef, #008dcc) !important;
+  color: #ffffff !important;
+  border-color: rgba(0, 174, 239, 0.95) !important;
+  box-shadow: 0 0 0 3px rgba(0, 158, 219, 0.12), 0 8px 18px rgba(0, 0, 0, 0.22) !important;
+}
+
+.overview-search-wrap {
+  position: relative !important;
+  width: min(320px, 100%) !important;
+  flex-shrink: 0 !important;
+}
+
+#overviewCountySearch {
+  width: 100% !important;
+  min-height: 36px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(0, 158, 219, 0.35) !important;
+  background: rgba(7, 26, 46, 0.62) !important;
+  color: #ffffff !important;
+  padding: 7px 42px 7px 15px !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  outline: none !important;
+}
+
+#overviewCountySearch::placeholder {
+  color: #9bb8d4 !important;
+}
+
+#overviewCountySearch:focus {
+  border-color: rgba(0, 174, 239, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(0, 158, 219, 0.13) !important;
+}
+
+#overviewSearchClear {
+  position: absolute !important;
+  right: 8px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 23px !important;
+  height: 23px !important;
+  border: none !important;
+  border-radius: 999px !important;
+  background: rgba(0, 158, 219, 0.20) !important;
+  color: #cceeff !important;
+  cursor: pointer !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+}
+
+#overview-map {
+  display: block !important;
+  width: 100% !important;
+  height: 520px !important;
+  min-height: 520px !important;
+  background: #071a2e !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+#overview-map .leaflet-container,
+.leaflet-container {
+  background: #071a2e !important;
+}
+
+#overview-map .leaflet-interactive {
+  transition: fill-opacity 0.18s ease, stroke-width 0.18s ease, stroke 0.18s ease !important;
+  filter: drop-shadow(0 0 5px rgba(0, 174, 239, 0.06)) !important;
+}
+
+.overview-map-side {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+}
+
+.overview-map-box {
+  background: rgba(18, 42, 77, 0.94) !important;
+  border: 1px solid rgba(0, 158, 219, 0.30) !important;
+  border-radius: 16px !important;
+  padding: 18px 18px !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+.overview-map-box h3 {
+  color: #9cc9f5 !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.07em !important;
+  text-transform: uppercase !important;
+  margin-bottom: 16px !important;
+}
+
+.overview-stat-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  padding: 13px 0 !important;
+  border-bottom: 1px solid rgba(0, 158, 219, 0.18) !important;
+}
+
+.overview-stat-row:last-child {
+  border-bottom: none !important;
+}
+
+.overview-stat-row span {
+  color: #9fb9d2 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}
+
+.overview-stat-row strong {
+  color: #ffffff !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 24px !important;
+  font-weight: 900 !important;
+}
+
+.overview-legend-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  color: #a8c4df !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  margin-bottom: 11px !important;
+}
+
+.overview-legend-item i {
+  width: 15px !important;
+  height: 15px !important;
+  border-radius: 4px !important;
+  display: inline-block !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+.overview-top-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+
+.overview-top-row {
+  display: grid !important;
+  grid-template-columns: 26px 1fr auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 0 !important;
+  border-bottom: 1px solid rgba(0, 158, 219, 0.14) !important;
+}
+
+.overview-top-row:last-child {
+  border-bottom: none !important;
+}
+
+.overview-top-row .top-rank,
+.top-rank {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 7px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(0, 158, 219, 0.20) !important;
+  color: #7fd0ff !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+
+.overview-top-row .top-name,
+.top-name {
+  color: #ffffff !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.overview-top-row .top-value,
+.top-value {
+  color: #8fc5ff !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.top-empty {
+  color: #9fb9d2 !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+.overview-map-fallback {
+  height: 520px !important;
+  min-height: 520px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #9cc9f5 !important;
+  text-align: center !important;
+  padding: 24px !important;
+}
+
+/* Leaflet popup improvement */
+#overview-map .leaflet-popup-content-wrapper {
+  background: #ffffff !important;
+  color: #111827 !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(0, 158, 219, 0.35) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32) !important;
+}
+
+#overview-map .leaflet-popup-tip {
+  background: #ffffff !important;
+}
+
+#overview-map .leaflet-popup-content {
+  min-width: 285px !important;
+  max-width: 360px !important;
+  margin: 14px 16px !important;
+}
+
+#overview-map .popup-title {
+  color: #009EDB !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  margin-bottom: 2px !important;
+}
+
+#overview-map .popup-subtitle {
+  color: #6b7280 !important;
+  font-size: 12px !important;
+  margin-bottom: 10px !important;
+}
+
+#overview-map .popup-row {
+  display: grid !important;
+  grid-template-columns: 150px 1fr !important;
+  gap: 8px !important;
+  font-size: 13px !important;
+  padding: 6px 0 !important;
+  border-top: 1px solid #e5e7eb !important;
+}
+
+#overview-map .popup-row span {
+  color: #6b7280 !important;
+}
+
+#overview-map .popup-row strong {
+  color: #111827 !important;
+  font-weight: 900 !important;
+}
+
+#overview-map .popup-section {
+  margin-top: 10px !important;
+  padding-top: 8px !important;
+  border-top: 1px solid #e5e7eb !important;
+}
+
+#overview-map .popup-section-title {
+  font-size: 11px !important;
+  color: #008fd1 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  font-weight: 900 !important;
+  margin-bottom: 6px !important;
+}
+
+#overview-map .popup-text,
+#overview-map .popup-bullet {
+  color: #1f2937 !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  font-weight: 700 !important;
+}
+
+@media (max-width: 1100px) {
+  .overview-map-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .overview-map-side {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 800px) {
+  #overview-map,
+  .overview-map-fallback {
+    height: 430px !important;
+    min-height: 430px !important;
+  }
+  .overview-map-side {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 650px) {
+  .overview-map-header,
+  .overview-map-tools {
+    align-items: stretch !important;
+  }
+  .overview-outcome-toggle,
+  .overview-search-wrap {
+    width: 100% !important;
+  }
+  .overview-outcome-btn {
+    flex: 1 1 auto !important;
+  }
+}
+
+/* Fix Leaflet popup being cut on overview map */
+.overview-map-card {
+  overflow: visible !important;
+}
+
+#overview-map {
+  overflow: visible !important;
+}
+
+.leaflet-container {
+  overflow: hidden !important;
+}
+
+.leaflet-popup {
+  z-index: 9999 !important;
+}
+
+.leaflet-popup-content-wrapper {
+  max-width: 360px !important;
+}
+
+.leaflet-popup-content {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* =========================================================
+   FINAL FIX: Overview map popup auto-visibility support
+   Keeps the popup readable after search/zoom and prevents clipping.
+========================================================= */
+#overview-map {
+  overflow: hidden !important;
+}
+
+#overview-map .leaflet-popup {
+  z-index: 99999 !important;
+}
+
+#overview-map .leaflet-popup-content-wrapper {
+  max-width: 380px !important;
+}
+
+#overview-map .leaflet-popup-content {
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+#overview-map .leaflet-popup-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+#overview-map .leaflet-popup-content::-webkit-scrollbar-thumb {
+  background: #b7c7d8;
+  border-radius: 999px;
+}
+
+/* =========================================================
+   FINAL OVERVIEW MAP SIZE FIX
+========================================================= */
+
+.overview-map-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 300px !important;
+  gap: 18px !important;
+
+  width: 100% !important;
+  max-width: 2100px !important;
+
+  margin: 0 auto !important;
+}
+
+#overview-map {
+  width: 100% !important;
+  height: 760px !important;
+  min-height: 760px !important;
+}
+
+.overview-map-side {
+  width: 300px !important;
+  min-width: 300px !important;
+}
+
+/* Ultra-wide screens */
+@media (min-width: 1800px) {
+
+  .overview-map-grid {
+    grid-template-columns: minmax(0, 1fr) 320px !important;
+    max-width: 2400px !important;
+  }
+
+  #overview-map {
+    height: 820px !important;
+    min-height: 820px !important;
+  }
+
+  .overview-map-side {
+    width: 320px !important;
+    min-width: 320px !important;
+  }
+}
+
+/* Laptop screens */
+@media (max-width: 1400px) {
+
+  #overview-map {
+    height: 680px !important;
+    min-height: 680px !important;
+  }
+}
+
+/* Tablet */
+@media (max-width: 1100px) {
+
+  .overview-map-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .overview-map-side {
+    width: 100% !important;
+    min-width: 0 !important;
+
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  #overview-map {
+    height: 620px !important;
+    min-height: 620px !important;
+  }
+}
+
+/* Mobile */
+@media (max-width: 800px) {
+
+  .overview-map-side {
+    grid-template-columns: 1fr !important;
+  }
+
+  #overview-map {
+    height: 480px !important;
+    min-height: 480px !important;
+  }
+}
+
+/* Outcome Areas cards glow hover */
+.section .grid-2 > .chart-wrap.clickable {
+  position: relative;
+  overflow: hidden;
+  transition: transform .28s ease, border-color .28s ease, box-shadow .28s ease, background .28s ease;
+}
+
+.section .grid-2 > .chart-wrap.clickable:hover {
+  transform: translateY(-5px);
+  border-color: rgba(0, 210, 255, .65) !important;
+  background: linear-gradient(180deg, rgba(22,52,94,.98), rgba(15,37,68,.98)) !important;
+  box-shadow:
+    0 0 0 1px rgba(0,210,255,.22),
+    0 0 22px rgba(0,210,255,.25),
+    0 0 48px rgba(0,140,255,.18),
+    0 16px 34px rgba(0,0,0,.45) !important;
+}
+
+.section .grid-2 > .chart-wrap.clickable::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at top left, rgba(0,220,255,.28), transparent 42%);
+  transition: opacity .28s ease;
+}
+
+.section .grid-2 > .chart-wrap.clickable:hover::before {
+  opacity: 1;
+}
+
+.section .grid-2 > .chart-wrap.clickable > * {
+  position: relative;
+  z-index: 1;
 }
