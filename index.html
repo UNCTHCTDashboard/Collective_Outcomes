@@ -5,6 +5,136 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>UNCT-HCT Collective Outcomes Dashboard</title>
 <link rel="stylesheet" href="css/style.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="js/data.js"></script>
+
+<style>
+/* OWID-style strategic overview map refinements */
+.overview-map-card{ position:relative; }
+#overview-map{
+  background: radial-gradient(circle at 44% 42%, #ffffff 0%, #f5fbff 45%, #e6f7ff 100%) !important;
+}
+.overview-map-title{ letter-spacing:-.01em; }
+.overview-map-subtitle{ color:#a9c7dd; }
+.overview-map-box h3{ letter-spacing:.08em; }
+.overview-map-box:first-child .overview-legend-item i{ border:1px solid rgba(255,255,255,.35); }
+.overview-map-scale-control{
+  width:min(560px, calc(100vw - 460px));
+  max-width:560px;
+  min-width:330px;
+  background:rgba(255,255,255,.94);
+  color:#1f2d3d;
+  border:1px solid rgba(15,76,117,.18);
+  border-radius:14px;
+  padding:12px 14px 14px;
+  box-shadow:0 18px 42px rgba(0,43,73,.18);
+  backdrop-filter:blur(8px);
+  margin-left:14px!important;
+  margin-bottom:14px!important;
+  font-family:Inter, Arial, sans-serif;
+}
+.overview-map-scale-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+  margin-bottom:8px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-size:11px;
+  font-weight:900;
+  color:#1d3b57;
+}
+.overview-map-scale-head span:last-child{
+  color:#009ede;
+  text-transform:none;
+  letter-spacing:0;
+  font-size:11px;
+  font-weight:800;
+}
+.overview-scale-bar{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  height:16px;
+  border:1px solid rgba(31,45,61,.18);
+  overflow:hidden;
+  border-radius:2px;
+}
+.overview-scale-segment{
+  cursor:pointer;
+  transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  border-right:1px solid rgba(255,255,255,.5);
+}
+.overview-scale-segment:last-child{ border-right:none; }
+.overview-scale-segment.active,
+.overview-scale-segment:hover{
+  transform:scaleY(1.45);
+  filter:saturate(1.2) contrast(1.08);
+  box-shadow:0 0 0 2px rgba(0,0,0,.26) inset, 0 0 18px rgba(0,158,219,.35);
+  z-index:3;
+}
+.overview-scale-labels{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  margin-top:8px;
+  font-size:11px;
+  font-weight:900;
+  color:#3b4b5d;
+  text-align:center;
+}
+.overview-scale-labels span{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:20px;
+  border-radius:999px;
+  transition:background .15s ease, color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.overview-scale-labels span.active{
+  color:#ffffff;
+  background:#003d6b;
+  box-shadow:0 6px 14px rgba(0,61,107,.22);
+  transform:translateY(-2px);
+}
+.overview-scale-foot{
+  margin-top:8px;
+  font-size:11px;
+  color:#60758b;
+  text-align:center;
+  font-weight:800;
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.overview-scale-foot strong{
+  color:#003d6b;
+}
+.owid-county-tooltip{
+  z-index: 900!important;
+  pointer-events:none!important;
+  background:rgba(255,255,255,.97)!important;
+  border:0!important;
+  border-radius:12px!important;
+  box-shadow:0 16px 36px rgba(0,31,63,.22)!important;
+  color:#1f2d3d!important;
+  padding:0!important;
+}
+.owid-county-tooltip:before{ display:none!important; }
+.owid-tooltip-inner{ min-width:230px; max-width:280px; padding:0; overflow:hidden; }
+.owid-tooltip-head{ padding:12px 14px 10px; background:#f2f6f9; border-bottom:1px solid rgba(31,45,61,.10); }
+.owid-tooltip-title{ font-size:16px; font-weight:900; color:#0b2239; line-height:1.1; }
+.owid-tooltip-sub{ font-size:12px; color:#5b6f82; margin-top:4px; }
+.owid-tooltip-body{ padding:11px 14px 13px; }
+.owid-tooltip-big{ font-size:32px; font-weight:900; color:#006eb6; line-height:1; }
+.owid-tooltip-label{ margin-top:3px; color:#6f8295; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.owid-tooltip-list{ margin-top:10px; font-size:12px; color:#314255; line-height:1.55; }
+.owid-tooltip-list strong{ color:#0b2239; }
+@media (max-width:1000px){
+  .overview-map-scale-control{ width:calc(100vw - 80px); min-width:280px; }
+}
+</style>
+
 </head>
 
 <body>
@@ -76,6 +206,68 @@
     </div>
   </div>
 
+
+
+  <div class="section overview-map-section">
+    <div class="section-title">
+      <span class="section-icon" style="background:rgba(0,158,219,0.12)">🗺️</span>
+      Operational Presence Across Collective Outcomes
+    </div>
+
+    <div class="overview-map-grid">
+      <div class="overview-map-card">
+        <div class="overview-map-header">
+          <div>
+            <div class="overview-map-title">Collective Outcomes Operational Footprint</div>
+            <div class="overview-map-subtitle" id="overviewMapSummary">County shading shows overall collective outcome overlap. Hover over a county to view its summary and highlight the matching level in the scale.</div>
+          </div>
+          <div class="overview-map-header-actions">
+            <div class="overview-map-pill" id="overviewMapStatus">Loading map</div>
+          </div>
+        </div>
+        <div class="overview-map-tools">
+          <div class="overview-search-wrap">
+            <input type="text" id="overviewCountySearch" placeholder="Search county..." autocomplete="off" />
+            <button type="button" id="overviewSearchClear" title="Clear search">×</button>
+            <div id="overviewSearchResults" class="overview-search-results"></div>
+          </div>
+        </div>
+        <div id="overview-map"></div>
+      </div>
+
+      <div class="overview-map-side">
+        <div class="overview-map-box">
+          <h3>Map Guide</h3>
+          <div class="overview-legend-item"><i style="background:#1f4e79"></i><span>Darker counties = stronger collective outcome overlap</span></div>
+          <div class="overview-legend-item"><i style="background:#d7ecf7"></i><span>Lighter counties = fewer reported outcomes</span></div>
+          <div class="overview-legend-item"><i style="background:#ffffff"></i><span>Hover a county to see summary and highlight its level</span></div>
+        </div>
+        
+        <div class="overview-map-box">
+          <h3>Coverage Snapshot</h3>
+          <div class="overview-stat-row"><span>States covered</span><strong id="overviewStatesCovered">—</strong></div>
+          <div class="overview-stat-row"><span>Counties covered</span><strong id="overviewCountiesCovered">—</strong></div>
+          <div class="overview-stat-row"><span>Max outcomes in a county</span><strong id="overviewMaxOutcomes">—</strong></div>
+        </div>
+
+        <div class="overview-map-box">
+    <h3>TOP STATES / ADMIN AREAS</h3>
+
+    <div id="overviewTopStates" class="overview-top-list"></div>
+</div>
+
+        
+
+        <div class="overview-map-box">
+          <h3>Highest Multi-Outcome Counties</h3>
+          <div id="overviewTopCounties" class="overview-top-list">
+            <div class="top-empty">Waiting for county data…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="section">
     <div class="section-title">
       <span class="section-icon" style="background:rgba(52,211,153,0.12)">🧭</span>
@@ -87,7 +279,7 @@
       <div class="chart-wrap clickable" onclick="window.location.href='food-security.html'">
         <div class="chart-header">
           <div>
-            <div class="chart-title">🌾 Food Security</div>
+            <div class="chart-title"><h2>🌾 Food Security</h2></div>
             <div class="chart-subtitle">
               Strengthened food systems and agriculture productivity.
               <br><span class="link-hint">→ Click to explore details</span>
@@ -109,7 +301,7 @@
       <div class="chart-wrap clickable" onclick="window.location.href='basic-services.html'">
         <div class="chart-header">
           <div>
-            <div class="chart-title">🏥 Basic / Essential Social Services</div>
+            <div class="chart-title"><h2>🏥 Basic / Essential Social Services </h2></div>
             <div class="chart-subtitle">
               Sustained access to health, education, skills development and nutrition services.
               <br><span class="link-hint">→ Click to explore details</span>
@@ -135,7 +327,7 @@
       <div class="chart-wrap clickable" onclick="window.location.href='durable-solutions.html'">
         <div class="chart-header">
           <div>
-            <div class="chart-title">🏘 Durable Solutions</div>
+            <div class="chart-title"><h2>🏘 Durable Solutions</h2></div>
             <div class="chart-subtitle">
               Reduced number of people in prolonged displacement, including refugees.
               <br><span class="link-hint">→ Click to explore details</span>
@@ -157,7 +349,7 @@
       <div class="chart-wrap clickable" onclick="window.location.href='rapid-response.html'">
         <div class="chart-header">
           <div>
-            <div class="chart-title">⚡ Rapid Response</div>
+            <div class="chart-title"><h2>⚡ Rapid Response</h2></div>
             <div class="chart-subtitle">
               Life-saving assistance and protection following new shocks.
               <br><span class="link-hint">→ Click to explore details</span>
@@ -178,7 +370,7 @@
       <div class="chart-wrap clickable" onclick="window.location.href='peace-governance.html'" style="grid-column: span 2">
         <div class="chart-header">
           <div>
-            <div class="chart-title">🕊 Peace, Governance and Justice</div>
+            <div class="chart-title"><h2>🕊 Peace, Governance and Justice</h2></div>
             <div class="chart-subtitle">
               Community violence reduction, civic engagement, rule of law, access to justice and human rights.
               <br><span class="link-hint">→ Click to explore details</span>
@@ -209,6 +401,680 @@
     <p>UNCT-HCT Collective Outcomes Dashboard · South Sudan · Framework period 2025–2026</p>
   </div>
 </footer>
+
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  const mapEl = document.getElementById('overview-map');
+  if (!mapEl || typeof L === 'undefined') return;
+
+  const statusEl = document.getElementById('overviewMapStatus');
+  const summaryEl = document.getElementById('overviewMapSummary');
+  const statesEl = document.getElementById('overviewStatesCovered');
+  const countiesEl = document.getElementById('overviewCountiesCovered');
+  const maxEl = document.getElementById('overviewMaxOutcomes');
+  const topEl = document.getElementById('overviewTopCounties');
+  const topStatesEl = document.getElementById('overviewTopStates');
+  const searchInput = document.getElementById('overviewCountySearch');
+  const searchResults = document.getElementById('overviewSearchResults');
+  const searchClear = document.getElementById('overviewSearchClear');
+
+  const OUTCOME_ICONS = {
+    'Food Security': '🌾',
+    'Basic Services': '🏥',
+    'Durable Solutions': '🏘',
+    'Rapid Response': '⚡',
+    'Peace & Governance': '🕊'
+  };
+
+  let activeOutcome = 'All';
+  let map;
+  let geoLayer;
+  let scaleControl;
+  let geoLookup;
+  let allRows = [];
+  let currentCoverage = new Map();
+  let featureLayers = [];
+  let selectedSearchLayer = null;
+  let highlightedScaleLevel = null;
+  let lockedScaleLevel = null;
+  let scaleStatsByLevel = new Map();
+
+  function clean(value) { return String(value ?? '').trim(); }
+  function norm(value) { return clean(value).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, ''); }
+
+  function getField(row, names) {
+    if (!row || typeof row !== 'object') return '';
+    for (const n of names) if (row[n] !== undefined && row[n] !== null && clean(row[n]) !== '') return row[n];
+    return '';
+  }
+
+  function getOutcome(row) {
+    const explicit = clean(getField(row, ['outcome','Outcome','Collective Outcome','Outcome Area','output','Output']));
+    const category = clean(getField(row, ['category','Category','sector','Sector']));
+    const indicator = clean(getField(row, ['indicator','Indicator']));
+    const text = `${explicit} ${category} ${indicator}`.toLowerCase();
+    if (text.includes('food')) return 'Food Security';
+    if (text.includes('basic') || text.includes('education') || text.includes('health') || text.includes('nutrition')) return 'Basic Services';
+    if (text.includes('durable') || text.includes('displacement') || text.includes('return') || text.includes('relocation')) return 'Durable Solutions';
+    if (text.includes('rapid') || text.includes('shock') || text.includes('response')) return 'Rapid Response';
+    if (text.includes('peace') || text.includes('governance') || text.includes('justice') || text.includes('civic')) return 'Peace & Governance';
+    return explicit || 'Other';
+  }
+
+  function flattenCOData(source) {
+    const out = [];
+    if (!source) return out;
+    if (Array.isArray(source)) return source.filter(r => r && typeof r === 'object');
+    if (typeof source === 'object') {
+      Object.keys(source).forEach(key => {
+        const block = source[key];
+        if (Array.isArray(block)) block.forEach(r => { if (r && typeof r === 'object') out.push(r); });
+        if (block && Array.isArray(block.records)) block.records.forEach(r => { if (r && typeof r === 'object') out.push(r); });
+        if (block && typeof block === 'object') {
+          Object.keys(block).forEach(subKey => {
+            if (Array.isArray(block[subKey]) && subKey !== 'adminAreas') block[subKey].forEach(r => { if (r && typeof r === 'object') out.push(r); });
+          });
+        }
+      });
+    }
+    return out;
+  }
+
+  function rowsFromWindow() {
+    if (window.CO_DATA) { const rows = flattenCOData(window.CO_DATA); if (rows.length) return rows; }
+    const candidates = ['collectiveData','collectiveOutcomesData','collectiveOutcomes','dashboardData','allOutputs','allOutputsData','allData','ALL_OUTPUTS','data','DATA'];
+    for (const name of candidates) { const rows = flattenCOData(window[name]); if (rows.length) return rows; }
+    return [];
+  }
+
+  async function rowsFromDataJs() {
+    try {
+      const paths = ['js/data.js','./js/data.js','data.js','./data.js'];
+      let text = '';
+      for (const path of paths) {
+        try {
+          const res = await fetch(path, { cache: 'no-store' });
+          if (res.ok) { text = await res.text(); break; }
+        } catch (e) {}
+      }
+      if (!text) return [];
+      const objectMatch = text.match(/window\.CO_DATA\s*=\s*({[\s\S]*?});\s*$/m);
+      if (objectMatch && objectMatch[1]) {
+        const obj = Function('"use strict"; return (' + objectMatch[1] + ');')();
+        const rows = flattenCOData(obj);
+        if (rows.length) return rows;
+      }
+      const patterns = [/(?:const|let|var)\s+\w+\s*=\s*(\[[\s\S]*?\]);/m,/window\.\w+\s*=\s*(\[[\s\S]*?\]);/m];
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          const arr = Function('"use strict"; return (' + match[1] + ');')();
+          if (Array.isArray(arr)) return arr;
+        }
+      }
+    } catch (e) { console.warn('Could not parse js/data.js for overview map:', e); }
+    return [];
+  }
+
+  function isGenericLocation(county, state) {
+    const c = norm(county), st = norm(state);
+    const genericCountyKeys = new Set(['nationwide','countrywide','national','southsudan','allcountry','allcounties','multiplecounties','variouscounties','notapplicable','na','n/a'].map(norm));
+    const genericStateKeys = new Set(['countrywide','nationwide','national','southsudan','allstates','multiplestates','variousstates','notapplicable','na','n/a'].map(norm));
+    return genericCountyKeys.has(c) || genericStateKeys.has(st);
+  }
+
+  function getFeatureName(feature) {
+    const p = feature.properties || {};
+    return p.ADM2_EN || p.County || p.county || p.NAME_2 || p.ADM2_NAME || p.admin2Name || p.name || p.NAME || 'County';
+  }
+
+  function getFeatureState(feature) {
+    const p = feature.properties || {};
+    return p.ADM1_EN || p.State || p.state || p.NAME_1 || p.ADM1_NAME || p.admin1Name || '';
+  }
+
+  function buildGeoLookup(geojson) {
+    const countyToFeature = new Map(), countyStateToFeature = new Map();
+    const features = geojson && Array.isArray(geojson.features) ? geojson.features : [];
+    features.forEach(feature => {
+      const county = clean(getFeatureName(feature));
+      const state = clean(getFeatureState(feature));
+      if (!county || county === 'County') return;
+      const item = { county, state, key: norm(county) + '|' + norm(state), feature };
+      countyToFeature.set(norm(county), item);
+      countyStateToFeature.set(norm(county) + '|' + norm(state), item);
+    });
+    return { countyToFeature, countyStateToFeature };
+  }
+
+  function resolveGeoMatch(county, state) {
+    if (!geoLookup) return null;
+    const countyKey = norm(county), stateKey = norm(state);
+    if (geoLookup.countyStateToFeature.has(countyKey + '|' + stateKey)) return geoLookup.countyStateToFeature.get(countyKey + '|' + stateKey);
+    if (geoLookup.countyToFeature.has(countyKey)) return geoLookup.countyToFeature.get(countyKey);
+    return null;
+  }
+
+  function buildCoverage(rows, selectedOutcome) {
+    const coverage = new Map(), states = new Set();
+    rows.forEach(row => {
+      const county = clean(getField(row, ['county','County','ADM2_EN','Admin2','Admin 2','admin2','County Name']));
+      const state = clean(getField(row, ['state','State','ADM1_EN','Admin1','Admin 1','admin1','State Name']));
+      const outcome = getOutcome(row);
+      const agency = clean(getField(row, ['agency','Agency','Reporting Agency','Reporting Entity','entity','Entity'])) || 'Not specified';
+      const indicator = clean(getField(row, ['indicator','Indicator'])) || 'Not specified';
+      if (!county || !outcome || outcome === 'Other') return;
+      if (selectedOutcome !== 'All' && outcome !== selectedOutcome) return;
+      if (isGenericLocation(county, state)) return;
+      const match = resolveGeoMatch(county, state);
+      if (!match) return;
+      if (!coverage.has(match.key)) coverage.set(match.key, { county: match.county, state: match.state, outcomes: new Set(), agencies: new Set(), indicators: new Set(), records: 0 });
+      const rec = coverage.get(match.key);
+      rec.outcomes.add(outcome); rec.agencies.add(agency); rec.indicators.add(indicator); rec.records += 1;
+      if (match.state) states.add(match.state);
+    });
+    return { coverage, states };
+  }
+
+  function getMetricCount(record) { if (!record) return 0; return activeOutcome === 'All' ? record.outcomes.size : (record.records > 0 ? 1 : 0); }
+  function getLevel(count) { if (!count) return 0; return Math.max(1, Math.min(5, Number(count))); }
+  function getScaleLevel(count) { if (!count) return 0; return count >= 4 ? 4 : Math.max(1, Number(count)); }
+  function getColor(count) {
+    if (!count) return '#eef5f7';
+    if (activeOutcome !== 'All') return '#2f6fae';
+    if (count >= 5) return '#003b73';
+    if (count === 4) return '#0b69b3';
+    if (count === 3) return '#3fa0cf';
+    if (count === 2) return '#9ed1df';
+    return '#d7ecf7';
+  }
+  function getFeatureKey(feature) { return norm(getFeatureName(feature)) + '|' + norm(getFeatureState(feature)); }
+  function getFeatureRecord(feature) { return currentCoverage.get(getFeatureKey(feature)) || currentCoverage.get(norm(getFeatureName(feature))); }
+
+  function styleFeature(feature) {
+    const record = getFeatureRecord(feature);
+    const count = getMetricCount(record);
+    return {
+      color: count ? 'rgba(68,95,110,0.55)' : 'rgba(120,145,158,0.25)',
+      weight: count ? 0.72 : 0.45,
+      fillColor: getColor(count),
+      fillOpacity: count ? 0.92 : 0.45,
+      opacity: 1
+    };
+  }
+
+  function highlightFeatureByLevel(level) {
+    highlightedScaleLevel = level ? Number(level) : null;
+    updateScaleHighlight(highlightedScaleLevel);
+    if (!geoLayer) return;
+    geoLayer.eachLayer(layer => {
+      const record = getFeatureRecord(layer.feature);
+      const count = getMetricCount(record);
+      const matched = highlightedScaleLevel && getScaleLevel(count) === highlightedScaleLevel;
+      if (matched) {
+        layer.setStyle({ weight: 2.4, color: '#111827', fillOpacity: 0.98, opacity: 1 });
+        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) layer.bringToFront();
+      } else if (highlightedScaleLevel) {
+        const base = styleFeature(layer.feature);
+        layer.setStyle({ ...base, fillOpacity: Math.max(0.18, base.fillOpacity * 0.30), opacity: 0.38, weight: 0.35 });
+      } else {
+        geoLayer.resetStyle(layer);
+      }
+    });
+  }
+
+  function resetScaleAndMapHighlight() {
+    if (lockedScaleLevel) {
+      highlightFeatureByLevel(lockedScaleLevel);
+      return;
+    }
+    highlightedScaleLevel = null;
+    updateScaleHighlight(null);
+    if (geoLayer) geoLayer.eachLayer(layer => { if (layer !== selectedSearchLayer) geoLayer.resetStyle(layer); });
+  }
+
+  function clearScaleLockAndMapHighlight() {
+    lockedScaleLevel = null;
+    highlightedScaleLevel = null;
+    updateScaleHighlight(null);
+    if (geoLayer) geoLayer.eachLayer(layer => { if (layer !== selectedSearchLayer) geoLayer.resetStyle(layer); });
+  }
+
+  function closeTooltipAndRestoreHighlight(layer) {
+    try { if (layer) layer.closeTooltip(); } catch (e) {}
+    closeAllCountyTooltips();
+    if (lockedScaleLevel) highlightFeatureByLevel(lockedScaleLevel);
+    else resetScaleAndMapHighlight();
+  }
+
+  function tooltipHtml(feature) {
+    const name = getFeatureName(feature);
+    const state = getFeatureState(feature);
+    const record = getFeatureRecord(feature);
+    const outcomes = record ? Array.from(record.outcomes).sort() : [];
+    const agencies = record ? Array.from(record.agencies).filter(Boolean).sort() : [];
+    const indicators = record ? Array.from(record.indicators).filter(Boolean).sort() : [];
+    const count = outcomes.length;
+    const outcomeText = outcomes.length ? outcomes.map(o => `${OUTCOME_ICONS[o] || '•'} ${o}`).join('<br>') : 'No county-level records found';
+    return `
+      <div class="owid-tooltip-inner">
+        <div class="owid-tooltip-head">
+          <div class="owid-tooltip-title">${name}</div>
+          <div class="owid-tooltip-sub">${state || 'South Sudan'}</div>
+        </div>
+        <div class="owid-tooltip-body">
+          <div class="owid-tooltip-big">${count || '—'}</div>
+          <div class="owid-tooltip-label">collective outcomes</div>
+          <div class="owid-tooltip-list"><strong>Outcome areas</strong><br>${outcomeText}</div>
+          <div class="owid-tooltip-list"><strong>Reporting agencies:</strong> ${agencies.length || '—'} &nbsp; <strong>Indicators:</strong> ${indicators.length || '—'}</div>
+        </div>
+      </div>`;
+  }
+
+  function popupHtml(feature) {
+    const record = getFeatureRecord(feature);
+    const outcomes = record ? Array.from(record.outcomes).sort() : [];
+    const agencies = record ? Array.from(record.agencies).filter(Boolean).sort() : [];
+    const indicators = record ? Array.from(record.indicators).filter(Boolean).sort() : [];
+    const outcomeHtml = outcomes.length ? outcomes.map(o => `<div class="popup-bullet">${OUTCOME_ICONS[o] || '•'} ${o}</div>`).join('') : '<div class="popup-text">No county-level records found in the loaded dataset.</div>';
+    return `
+      <div class="popup-title">${getFeatureName(feature)}</div>
+      <div class="popup-subtitle">${getFeatureState(feature) || 'South Sudan'}</div>
+      <div class="popup-row"><span>Active outcomes</span><strong>${outcomes.length}</strong></div>
+      <div class="popup-row"><span>Reporting agencies</span><strong>${agencies.length}</strong></div>
+      <div class="popup-row"><span>Indicators reported</span><strong>${indicators.length}</strong></div>
+      <div class="popup-section"><div class="popup-section-title">Outcome areas</div>${outcomeHtml}</div>
+      ${agencies.length ? `<div class="popup-section"><div class="popup-section-title">Agencies</div><div class="popup-text">${agencies.slice(0, 8).join(', ')}${agencies.length > 8 ? ' +' + (agencies.length - 8) + ' more' : ''}</div></div>` : ''}`;
+  }
+
+  function recordsForPanel(coverage) {
+    return Array.from(coverage.values()).map(r => ({ county: r.county, state: r.state, count: activeOutcome === 'All' ? r.outcomes.size : r.records, outcomesCount: r.outcomes.size, agenciesCount: r.agencies.size, indicatorsCount: r.indicators.size })).filter(r => r.count > 0).sort((a, b) => b.outcomesCount - a.outcomesCount || a.county.localeCompare(b.county));
+  }
+
+  function updateSidePanel(coverage, states) {
+    const records = recordsForPanel(coverage);
+    statesEl.textContent = states.size || '—';
+    countiesEl.textContent = records.length || '—';
+    maxEl.textContent = records.length ? Math.max(...records.map(r => r.outcomesCount)) : '—';
+    if (!records.length) {
+      topEl.innerHTML = '<div class="top-empty">No county-level records found.</div>';
+      if (topStatesEl) topStatesEl.innerHTML = '<div class="top-empty">No state/admin-area records found.</div>';
+      return;
+    }
+    topEl.innerHTML = records.slice(0, 5).map((r, i) => `
+      <div class="overview-top-row"><span class="top-rank">${i + 1}</span><span class="top-name">${r.county}</span><span class="top-value">${r.outcomesCount}</span></div>
+    `).join('');
+    if (topStatesEl) {
+      const stateGroups = new Map();
+      records.forEach(r => {
+        const stateName = clean(r.state) || 'Unspecified';
+        if (!stateGroups.has(stateName)) stateGroups.set(stateName, { state: stateName, counties: new Set(), outcomes: new Set() });
+        const group = stateGroups.get(stateName);
+        group.counties.add(r.county);
+        const coverageKey = norm(r.county) + '|' + norm(r.state);
+        const coverageRecord = coverage.get(coverageKey) || coverage.get(norm(r.county));
+        if (coverageRecord && coverageRecord.outcomes) coverageRecord.outcomes.forEach(outcome => group.outcomes.add(outcome));
+      });
+      const stateRows = Array.from(stateGroups.values()).map(s => ({ state: s.state, outcomeCount: s.outcomes.size, countiesCovered: s.counties.size })).filter(s => s.outcomeCount > 0).sort((a,b) => b.outcomeCount - a.outcomeCount || b.countiesCovered - a.countiesCovered || a.state.localeCompare(b.state)).slice(0, 5);
+      topStatesEl.innerHTML = stateRows.length ? stateRows.map((s,i) => `
+        <div class="overview-top-row"><span class="top-rank">${i + 1}</span><span class="top-name">${s.state}</span><span class="top-value">${s.outcomeCount}</span></div>
+      `).join('') : '<div class="top-empty">No state/admin-area records found.</div>';
+    }
+  }
+
+  function updateDynamicSummary(coverage, states) {
+    const records = recordsForPanel(coverage);
+    if (!records.length) { summaryEl.textContent = 'No county-level records are available for this map selection.'; return; }
+    const max = Math.max(...records.map(r => r.outcomesCount));
+    const top = records.filter(r => r.outcomesCount === max).slice(0, 3).map(r => r.county).join(', ');
+    summaryEl.textContent = `${records.length} counties across ${states.size} states/admin areas have reported data. Highest overlap: ${max} outcomes (${top}). Hover a county or the scale below the map.`;
+  }
+
+  function popupOptions() { return { className: 'food-popup overview-smart-popup', maxWidth: 360, minWidth: 285, autoPan: true, keepInView: true, closeButton: true }; }
+
+  function closeAllCountyTooltips() {
+    if (map) { try { map.closePopup(); } catch (e) {} }
+    if (!geoLayer) return;
+    geoLayer.eachLayer(l => {
+      try { l.closeTooltip(); } catch (e) {}
+      try { l.closePopup(); } catch (e) {}
+    });
+  }
+
+  function bindSmartPopup(layer) {
+    /* Use one OWID-style hover card only. No separate Leaflet popup is bound,
+       so search/click/hover all use the same visual tooltip. */
+    layer.unbindPopup();
+    layer.unbindTooltip();
+    layer.bindTooltip(tooltipHtml(layer.feature), {
+      className: 'owid-county-tooltip',
+      sticky: false,
+      opacity: 1,
+      direction: 'top',
+      offset: [0, -8],
+      permanent: false
+    });
+  }
+
+  function openLayerPopupSafely(layer) {
+    if (!map || !layer) return;
+    closeAllCountyTooltips();
+    try { layer.openTooltip(); } catch (e) {}
+  }
+
+  function zoomToLayerAndOpenPopup(layer) {
+    if (!map || !layer) return;
+    map.fitBounds(layer.getBounds(), { paddingTopLeft: [110, 150], paddingBottomRight: [110, 130], maxZoom: 7.15, animate: true });
+    map.once('moveend', () => openLayerPopupSafely(layer));
+    setTimeout(() => openLayerPopupSafely(layer), 450);
+  }
+
+  function buildScaleControl() {
+    const Control = L.Control.extend({
+      options: { position: 'bottomleft' },
+      onAdd: function () {
+        const container = L.DomUtil.create('div', 'overview-map-scale-control');
+        container.innerHTML = `
+          <div class="overview-map-scale-head"><span>Collective outcome overlap</span><span id="scaleHoverText">All covered counties</span></div>
+          <div class="overview-scale-bar">
+            ${[
+              {level:1, color:getColor(1)},
+              {level:2, color:getColor(2)},
+              {level:3, color:getColor(3)},
+              {level:4, color:getColor(4)}
+            ].map(item => `<div class="overview-scale-segment" data-level="${item.level}" style="background:${item.color}"></div>`).join('')}
+          </div>
+          <div class="overview-scale-labels">
+            <span data-label="1">1</span><span data-label="2">2</span><span data-label="3">3</span><span data-label="4">4–5 outcomes</span>
+          </div>
+          <div class="overview-scale-foot" id="overviewScaleStats"><strong>—</strong> counties · <strong>—</strong> states/admin areas</div>`;
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        container.querySelectorAll('.overview-scale-segment').forEach(seg => {
+          seg.addEventListener('mouseenter', () => highlightFeatureByLevel(Number(seg.dataset.level)));
+          seg.addEventListener('mouseleave', resetScaleAndMapHighlight);
+          seg.addEventListener('click', () => {
+            const level = Number(seg.dataset.level);
+            lockedScaleLevel = lockedScaleLevel === level ? null : level;
+            if (lockedScaleLevel) highlightFeatureByLevel(lockedScaleLevel);
+            else clearScaleLockAndMapHighlight();
+          });
+        });
+        return container;
+      }
+    });
+    scaleControl = new Control();
+    map.addControl(scaleControl);
+  }
+
+  function buildScaleStats(coverage) {
+    const stats = new Map();
+    [1, 2, 3, 4].forEach(level => stats.set(level, { states: new Set(), counties: new Set() }));
+    Array.from(coverage.values()).forEach(record => {
+      const count = getMetricCount(record);
+      const level = getScaleLevel(count);
+      if (!level || !stats.has(level)) return;
+      stats.get(level).counties.add(record.county);
+      if (record.state) stats.get(level).states.add(record.state);
+    });
+    scaleStatsByLevel = stats;
+  }
+
+  function scaleStatsText(level) {
+    if (level) {
+      const stats = scaleStatsByLevel.get(Number(level));
+      const counties = stats ? stats.counties.size : 0;
+      const states = stats ? stats.states.size : 0;
+      const levelLabel = Number(level) === 4 ? '4–5 outcomes' : `${level} ${Number(level) === 1 ? 'outcome' : 'outcomes'}`;
+      return `<strong>${levelLabel}</strong> · ${counties} ${counties === 1 ? 'county' : 'counties'} · ${states} ${states === 1 ? 'state/admin area' : 'states/admin areas'}`;
+    }
+    const records = Array.from(currentCoverage.values()).filter(record => getMetricCount(record) > 0);
+    const counties = records.length;
+    const states = new Set(records.map(record => record.state).filter(Boolean)).size;
+    return `<strong>${counties}</strong> counties · <strong>${states}</strong> states/admin areas`;
+  }
+
+  function updateScaleHighlight(level) {
+    const text = document.getElementById('scaleHoverText');
+    const statsEl = document.getElementById('overviewScaleStats');
+    document.querySelectorAll('.overview-scale-segment').forEach(seg => seg.classList.toggle('active', Number(seg.dataset.level) === Number(level)));
+    document.querySelectorAll('.overview-scale-labels span').forEach(lbl => lbl.classList.toggle('active', Number(lbl.dataset.label) === Number(level)));
+    if (text) text.textContent = level ? `${level === 4 ? '4–5 outcomes' : level + (level > 1 ? ' outcomes' : ' outcome')} ${lockedScaleLevel === Number(level) ? 'locked' : 'highlighted'}` : 'All covered counties';
+    if (statsEl) statsEl.innerHTML = scaleStatsText(level);
+  }
+
+  function refreshMap() {
+    const built = buildCoverage(allRows, activeOutcome);
+    currentCoverage = built.coverage;
+    buildScaleStats(built.coverage);
+    updateSidePanel(built.coverage, built.states);
+    updateDynamicSummary(built.coverage, built.states);
+    if (geoLayer) geoLayer.eachLayer(layer => { layer.setStyle(styleFeature(layer.feature)); bindSmartPopup(layer); });
+    updateScaleHighlight(lockedScaleLevel || highlightedScaleLevel || null);
+    statusEl.textContent = 'Live data view';
+    populateSearchResults(searchInput ? searchInput.value : '');
+  }
+
+  function populateSearchResults(query) {
+    if (!searchResults) return;
+    const q = norm(query);
+    if (!q) { searchResults.innerHTML = ''; searchResults.classList.remove('open'); return; }
+    const matches = featureLayers.map(layer => ({ layer, county: getFeatureName(layer.feature), state: getFeatureState(layer.feature) })).filter(item => norm(item.county).includes(q) || norm(item.state).includes(q)).slice(0, 8);
+    if (!matches.length) { searchResults.innerHTML = '<div class="overview-search-empty">No county found</div>'; searchResults.classList.add('open'); return; }
+    searchResults.innerHTML = matches.map((item, idx) => `<button type="button" data-search-index="${idx}"><strong>${item.county}</strong><span>${item.state || 'South Sudan'}</span></button>`).join('');
+    searchResults.querySelectorAll('button[data-search-index]').forEach(btn => btn.addEventListener('click', () => {
+      const item = matches[Number(btn.dataset.searchIndex)];
+      if (!item) return;
+      closeAllCountyTooltips();
+      if (selectedSearchLayer && geoLayer) geoLayer.resetStyle(selectedSearchLayer);
+      selectedSearchLayer = item.layer;
+      item.layer.setStyle({ weight: 3, color: '#111827', fillOpacity: 1, opacity: 1 });
+      if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) item.layer.bringToFront();
+      const record = getFeatureRecord(item.layer.feature);
+      const level = getScaleLevel(getMetricCount(record));
+      if (level) updateScaleHighlight(level);
+      zoomToLayerAndOpenPopup(item.layer);
+      searchInput.value = item.county;
+      searchResults.classList.remove('open');
+    }));
+    searchResults.classList.add('open');
+  }
+
+  async function loadGeojson() {
+    const geojsonPaths = [
+      'data/SouthSudan.json','./data/SouthSudan.json',
+      'data/southSudan.json','./data/southSudan.json',
+      'data/southsudan.json','./data/southsudan.json',
+      'SouthSudan.json','./SouthSudan.json',
+      'southSudan.json','./southSudan.json',
+      'data/adm2.geojson','./data/adm2.geojson',
+      'assets/SouthSudan.json','./assets/SouthSudan.json'
+    ];
+    for (const path of geojsonPaths) {
+      try {
+        const res = await fetch(path, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const json = await res.json();
+        if (json && Array.isArray(json.features)) return json;
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function setupToggle() {
+    activeOutcome = 'All';
+    if (!toggleEl) return;
+    toggleEl.querySelectorAll('.overview-outcome-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.outcome === 'All');
+      btn.addEventListener('click', () => {
+        activeOutcome = 'All';
+        toggleEl.querySelectorAll('.overview-outcome-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        refreshMap();
+      });
+    });
+  }
+
+  function resetOverviewMapView() {
+    selectedSearchLayer = null;
+    resetScaleAndMapHighlight();
+    if (geoLayer) {
+      closeAllCountyTooltips();
+      try { map && map.closePopup(); } catch (e) {}
+      geoLayer.eachLayer(layer => geoLayer.resetStyle(layer));
+    }
+    if (map) {
+      map.setView([7.15, 30.75], 7.25, { animate: true });
+      setTimeout(() => map.invalidateSize(), 220);
+    }
+  }
+
+  function setupSearch() {
+    if (!searchInput) return;
+    searchInput.addEventListener('input', () => {
+      const value = searchInput.value.trim();
+      if (!value) { populateSearchResults(''); resetOverviewMapView(); return; }
+      populateSearchResults(value);
+    });
+    searchInput.addEventListener('focus', () => populateSearchResults(searchInput.value));
+    searchClear && searchClear.addEventListener('click', () => { searchInput.value = ''; populateSearchResults(''); lockedScaleLevel = null; resetOverviewMapView(); });
+    document.addEventListener('click', e => { if (!e.target.closest('.overview-search-wrap')) searchResults && searchResults.classList.remove('open'); });
+  }
+
+  function installMapBoundaryClose() {
+    if (!mapEl) return;
+
+    const isInteractiveMapElement = el => {
+      if (!el || !el.closest) return false;
+      return !!(
+        el.closest('path.leaflet-interactive') ||
+        el.closest('.leaflet-control') ||
+        el.closest('.overview-search-wrap') ||
+        el.closest('.owid-county-tooltip')
+      );
+    };
+
+    const closeSelectionAndTooltip = () => {
+      closeAllCountyTooltips();
+      if (selectedSearchLayer && geoLayer) {
+        try { geoLayer.resetStyle(selectedSearchLayer); } catch (e) {}
+        selectedSearchLayer = null;
+      }
+      if (!lockedScaleLevel) resetScaleAndMapHighlight();
+      else highlightFeatureByLevel(lockedScaleLevel);
+    };
+
+    mapEl.addEventListener('mouseleave', closeSelectionAndTooltip);
+    mapEl.addEventListener('mousemove', evt => {
+      if (!isInteractiveMapElement(evt.target)) closeSelectionAndTooltip();
+    });
+  }
+
+  async function initOverviewMap() {
+    statusEl.textContent = 'Loading data';
+    allRows = rowsFromWindow();
+    if (!allRows.length) allRows = await rowsFromDataJs();
+    const geojsonData = await loadGeojson();
+    if (!geojsonData) {
+      statusEl.textContent = 'GeoJSON missing';
+      mapEl.innerHTML = '<div class="overview-map-fallback">South Sudan county GeoJSON could not be found. Please confirm the file exists as <strong>data/SouthSudan.json</strong>.</div>';
+      return;
+    }
+
+    map = L.map('overview-map', { zoomControl: true, attributionControl: false, scrollWheelZoom: true, closePopupOnClick: true, zoomSnap: 0.25, zoomDelta: 0.25 }).setView([7.15, 30.75], 7.25);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 10 }).addTo(map);
+    installMapBoundaryClose();
+    buildScaleControl();
+    geoLookup = buildGeoLookup(geojsonData);
+    setupSearch();
+    currentCoverage = buildCoverage(allRows, activeOutcome).coverage;
+
+    const ResetControl = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: function () {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        container.innerHTML = '↺';
+        container.title = 'Reset map view';
+        container.style.backgroundColor = '#0f2235';
+        container.style.color = '#ffffff';
+        container.style.width = '34px';
+        container.style.height = '34px';
+        container.style.lineHeight = '34px';
+        container.style.textAlign = 'center';
+        container.style.cursor = 'pointer';
+        container.style.fontSize = '18px';
+        container.style.fontWeight = '700';
+        container.style.borderRadius = '8px';
+        container.style.boxShadow = '0 2px 10px rgba(0,0,0,.22)';
+        container.onclick = function () {
+          if (searchInput) searchInput.value = '';
+          if (searchResults) { searchResults.innerHTML = ''; searchResults.classList.remove('open'); }
+          lockedScaleLevel = null;
+          resetOverviewMapView();
+        };
+        return container;
+      }
+    });
+    map.addControl(new ResetControl());
+
+    geoLayer = L.geoJSON(geojsonData, {
+      style: styleFeature,
+      onEachFeature: function (feature, layer) {
+        bindSmartPopup(layer);
+        layer.on({
+          mouseover: function (e) {
+            closeAllCountyTooltips();
+            if (selectedSearchLayer && selectedSearchLayer !== e.target && geoLayer) {
+              try { geoLayer.resetStyle(selectedSearchLayer); } catch (err) {}
+              selectedSearchLayer = null;
+            }
+            const record = getFeatureRecord(feature);
+            const level = getScaleLevel(getMetricCount(record));
+            highlightFeatureByLevel(level);
+            e.target.setStyle({ weight: 3.2, color: '#111827', fillOpacity: 1, opacity: 1 });
+            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
+            try { e.target.openTooltip(); } catch (err) {}
+          },
+          mouseout: function (e) {
+            closeTooltipAndRestoreHighlight(e.target);
+            if (!lockedScaleLevel) {
+              try { geoLayer.resetStyle(e.target); } catch (err) {}
+            }
+          },
+          click: function (e) {
+            closeAllCountyTooltips();
+            if (selectedSearchLayer && selectedSearchLayer !== e.target && geoLayer) {
+              try { geoLayer.resetStyle(selectedSearchLayer); } catch (err) {}
+            }
+            selectedSearchLayer = e.target;
+            e.target.setStyle({ weight: 3.2, color: '#111827', fillOpacity: 1, opacity: 1 });
+            zoomToLayerAndOpenPopup(e.target);
+          }
+        });
+      }
+    }).addTo(map);
+    featureLayers = [];
+    geoLayer.eachLayer(layer => featureLayers.push(layer));
+
+    try {
+      map.fitBounds(geoLayer.getBounds(), { paddingTopLeft: [30, 15], paddingBottomRight: [30, 95], maxZoom: 7.5 });
+      setTimeout(() => {
+        const z = map.getZoom();
+        if (z < 7.25) map.setZoom(7.25, { animate: false });
+        map.panBy([70, -12], { animate: false });
+      }, 80);
+    } catch (e) {
+      map.setView([7.15, 30.75], 7.25);
+    }
+    setTimeout(() => map.invalidateSize(), 250);
+    refreshMap();
+  }
+
+  initOverviewMap();
+})();
+</script>
 
 </body>
 </html>
