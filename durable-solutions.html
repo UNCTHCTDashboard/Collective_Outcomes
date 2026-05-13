@@ -5,12 +5,105 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Durable Solutions - Collective Outcomes Dashboard</title>
 
-  <link rel="stylesheet" href="css/style.css?v=20260503"/>
+  <link rel="stylesheet" href="css/style.css?v=20260509"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" defer></script>
-  <script src="js/data.js?v=20260503" defer></script>
-  <script src="js/durable-solutions.js?v=20260503" defer></script>
+  <script src="js/data.js?v=20260509" defer></script>
+  <script src="js/durable-solutions.js?v=20260509" defer></script>
+
+  <style>
+    /* Durable Solutions: Map / Agency Ranking view switch */
+    .owid-view-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      margin: 0 0 18px 0;
+      border-radius: 18px;
+      background: rgba(10, 25, 47, 0.88);
+      border: 1px solid rgba(0, 174, 239, 0.18);
+      box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .owid-view-tab {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      outline: none;
+      cursor: pointer;
+      background: rgba(15, 35, 62, 0.78);
+      color: #d6e8f5;
+      padding: 14px 22px;
+      border-radius: 14px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      transition: all 0.25s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 170px;
+      justify-content: center;
+      box-shadow: none;
+    }
+
+    .owid-view-tab:hover {
+      border-color: rgba(0, 174, 239, 0.45);
+      background: rgba(0, 174, 239, 0.12);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .owid-view-tab.active {
+      background: linear-gradient(135deg, #00AEEF, #0077b6);
+      color: #ffffff;
+      border-color: rgba(0, 174, 239, 0.75);
+      box-shadow:
+        0 0 0 1px rgba(0, 174, 239, 0.25),
+        0 10px 24px rgba(0, 174, 239, 0.38);
+      transform: translateY(-1px);
+    }
+
+    .view-panel {
+      display: none;
+    }
+
+    .view-panel.active {
+      display: block;
+    }
+
+    .agency-ranking-note {
+      margin-top: 10px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    #agency-ranking-chart {
+      width: 100%;
+      min-height: 520px;
+    }
+
+    @media (max-width: 768px) {
+      .owid-view-tabs {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .owid-view-tab {
+        width: 100%;
+        min-width: unset;
+      }
+
+      #agency-ranking-chart {
+        min-height: 420px;
+      }
+    }
+  </style>
+
 </head>
 
 <body>
@@ -119,6 +212,47 @@
 
     <section class="section">
       <div class="section-title"><span class="section-icon icon-blue">🗺</span><span id="map-section-title">Geographical Coverage</span></div>
+      <div class="owid-view-tabs" role="tablist" aria-label="Durable Solutions views">
+        <button id="map-view-tab" class="owid-view-tab active" type="button">🗺 Map View</button>
+        <button id="agency-ranking-tab" class="owid-view-tab" type="button">📊 Agency Ranking</button>
+      </div>
+
+      <div id="map-view-panel" class="view-panel active">
+      <div class="map-selector-toolbar">
+        <button id="open-map-selector" class="map-selector-btn" type="button">✎ Select states / counties</button>
+      </div>
+
+      <div id="map-selector-backdrop" class="map-selector-backdrop"></div>
+      <aside id="map-selector-drawer" class="map-selector-drawer" aria-hidden="true">
+        <div class="map-selector-header">
+          <div>
+            <div class="map-selector-title">Select States and Counties</div>
+            <div class="map-selector-subtitle">Filter the durable solutions map and dashboard</div>
+          </div>
+          <button id="close-map-selector" class="map-selector-close" type="button">×</button>
+        </div>
+
+        <div class="map-selector-search-wrap">
+          <input id="map-selector-search" class="map-selector-search" type="search" placeholder="Search state or county"/>
+        </div>
+
+        <div class="map-selector-tabs">
+          <button id="map-selector-tab-states" class="map-selector-tab active" type="button" data-map-selector-tab="states">States</button>
+          <button id="map-selector-tab-counties" class="map-selector-tab" type="button" data-map-selector-tab="counties">Counties</button>
+        </div>
+
+        <div class="map-selector-actions">
+          <select id="map-selector-sort" class="map-selector-sort">
+            <option value="value-desc">Sort by value/highest coverage</option>
+            <option value="name-asc">Sort by name A-Z</option>
+          </select>
+          <button id="map-selector-clear" class="map-selector-clear" type="button">Clear</button>
+        </div>
+
+        <div id="map-selector-selected" class="map-selector-selected">No map filter selected</div>
+        <div id="map-selector-list" class="map-selector-list"></div>
+      </aside>
+
       <div class="map-dashboard">
         <div class="map-panel">
           <div class="map-note">Boundaries and names shown on this map do not imply official endorsement or acceptance by the United Nations.</div>
@@ -148,6 +282,22 @@
             <div id="map-top-counties" class="top-list"></div>
           </div>
         </aside>
+      </div>
+      </div>
+
+      <div id="agency-ranking-panel" class="view-panel">
+        <div class="chart-wrap">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Agency Ranking by Reported Value</div>
+              <div class="chart-subtitle">Horizontal ranking of reporting entities. For Durable Solutions, select one indicator first to avoid mixing different units.</div>
+            </div>
+          </div>
+          <div id="agency-ranking-chart" class="plotly-chart chart-tall"></div>
+          <div class="agency-ranking-note">
+            Note: Durable Solutions indicators use different units. Agency ranking is therefore shown only when one indicator is selected.
+          </div>
+        </div>
       </div>
     </section>
 

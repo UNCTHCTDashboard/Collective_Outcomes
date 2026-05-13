@@ -18,6 +18,325 @@
   <!-- Dashboard data and page script -->
   <script src="js/data.js?v=20260506" defer></script>
   <script src="js/food-security.js?v=20260506" defer></script>
+
+  <style>
+    /* OWID-style map state/county selector drawer */
+    .map-selector-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin: 0 0 14px 0;
+    }
+
+    .map-select-drawer-btn {
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(15, 35, 62, 0.78);
+      color: #e8f1fa;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+    }
+
+    .map-select-drawer-btn:hover {
+      background: rgba(0, 158, 219, 0.18);
+      border-color: rgba(0, 158, 219, 0.55);
+    }
+
+    .map-drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 12, 24, 0.55);
+      z-index: 9998;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+
+    .map-drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .map-selector-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(430px, 94vw);
+      height: 100vh;
+      background: #ffffff;
+      color: #334155;
+      z-index: 9999;
+      transform: translateX(105%);
+      transition: transform 0.25s ease;
+      box-shadow: -18px 0 45px rgba(0,0,0,0.28);
+      display: flex;
+      flex-direction: column;
+      font-family: Inter, Arial, sans-serif;
+    }
+
+    .map-selector-drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 24px 24px 14px 24px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .drawer-title {
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #475569;
+    }
+
+    .drawer-close-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      color: #64748b;
+      font-size: 26px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .drawer-body {
+      padding: 16px 24px 20px 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .drawer-search {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #334155;
+      font-size: 15px;
+      margin-bottom: 12px;
+    }
+
+    .drawer-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .drawer-select {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .drawer-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0 14px 0;
+    }
+
+    .drawer-selected-count {
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 700;
+    }
+
+    .drawer-action-btn {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #334155;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .drawer-action-btn.primary {
+      background: #0f766e;
+      color: #fff;
+      border-color: #0f766e;
+    }
+
+    .drawer-list {
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .drawer-row {
+      display: grid;
+      grid-template-columns: 26px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #eef2f7;
+      cursor: pointer;
+    }
+
+    .drawer-row:hover {
+      background: #f8fafc;
+    }
+
+    .drawer-row input {
+      width: 18px;
+      height: 18px;
+    }
+
+    .drawer-name {
+      font-weight: 800;
+      color: #334155;
+      line-height: 1.2;
+    }
+
+    .drawer-meta {
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 3px;
+    }
+
+    .drawer-value {
+      font-weight: 900;
+      color: #475569;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .drawer-empty {
+      padding: 22px 0;
+      color: #64748b;
+      text-align: center;
+      font-weight: 700;
+    }
+
+
+
+    /* OWID-style visualization tabs */
+    .view-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 16px 0;
+      padding: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(15, 35, 62, 0.55);
+      border-radius: 14px;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.16);
+    }
+
+    .view-tab-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: #a9bfd6;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .view-tab-btn:hover {
+      color: #e8f1fa;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .view-tab-btn.active {
+      color: #ffffff;
+      background: rgba(0, 158, 219, 0.22);
+      border-color: rgba(0, 158, 219, 0.48);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+    }
+
+    .food-view-panel {
+      display: none;
+    }
+
+    .food-view-panel.active {
+      display: block;
+    }
+
+    .agency-ranking-panel {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: linear-gradient(180deg, rgba(12,31,58,0.96), rgba(9,24,45,0.96));
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 18px 36px rgba(0,0,0,0.22);
+    }
+
+    .agency-ranking-note {
+      margin-top: 12px;
+      color: #8ba8c4;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .agency-ranking-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .agency-rank-mini-card {
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+
+    .agency-rank-mini-card span {
+      display: block;
+      color: #8ba8c4;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+
+    .agency-rank-mini-card strong {
+      color: #e8f1fa;
+      font-size: 20px;
+      font-weight: 950;
+      line-height: 1.15;
+    }
+
+    @media (max-width: 780px) {
+      .agency-ranking-summary { grid-template-columns: 1fr; }
+      .view-tabs { width: 100%; }
+      .view-tab-btn { flex: 1; }
+    }
+
+    .active-map-filter-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(0, 158, 219, 0.12);
+      color: #b8d9f7;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid rgba(0, 158, 219, 0.25);
+    }
+  </style>
+
 </head>
 
 <body>
@@ -167,7 +486,19 @@
         Geographical Coverage by Beneficiaries
       </div>
 
-      <div class="map-dashboard">
+
+      <div class="view-tabs" role="tablist" aria-label="Food security visualization views">
+        <button id="view-map-btn" class="view-tab-btn active" type="button" role="tab" aria-selected="true">🗺 Map View</button>
+        <button id="view-agency-ranking-btn" class="view-tab-btn" type="button" role="tab" aria-selected="false">📊 Agency Ranking</button>
+      </div>
+
+      <div id="food-map-view-panel" class="food-view-panel active">
+        <div class="map-selector-toolbar">
+          <button id="open-map-selector" class="map-select-drawer-btn" type="button">🖊 Select states / counties</button>
+          <span id="active-map-filter-pill" class="active-map-filter-pill" style="display:none;"></span>
+        </div>
+
+        <div class="map-dashboard">
         <div class="map-panel">
           <div class="map-note">
             Boundaries and names shown on this map do not imply official endorsement or acceptance by the United Nations.
@@ -202,6 +533,43 @@
             <div id="map-top-counties" class="top-list"></div>
           </div>
         </aside>
+        </div>
+      </div>
+
+      <div id="food-agency-ranking-panel" class="food-view-panel">
+        <div class="agency-ranking-panel">
+          <div class="chart-header">
+            <div>
+              <div class="chart-title">Agency Ranking by Reported Beneficiaries</div>
+              <div class="chart-subtitle">Horizontal ranking of reporting entities, automatically updated by the selected filters.</div>
+            </div>
+          </div>
+
+          <div class="agency-ranking-summary">
+            <div class="agency-rank-mini-card">
+              <span>Leading entity</span>
+              <strong id="agency-rank-leading">—</strong>
+            </div>
+            <div class="agency-rank-mini-card">
+              <span>Leading share</span>
+              <strong id="agency-rank-share">—</strong>
+            </div>
+            <div class="agency-rank-mini-card">
+              <span>Total reported</span>
+              <strong id="agency-rank-total">0</strong>
+            </div>
+          </div>
+
+          <div class="chart-actions">
+            <button type="button" onclick="downloadChartPNG('agency-ranking-chart', 'food_security_agency_ranking')">Download PNG</button>
+            <button type="button" onclick="downloadChartCSV('agency')">Download CSV</button>
+          </div>
+
+          <div id="agency-ranking-chart" class="plotly-chart chart-tall"></div>
+          <div class="agency-ranking-note">
+            Note: Values represent reported totals under the current filters. For Food Security, this view is most meaningful when indicators use beneficiary-based counts.
+          </div>
+        </div>
       </div>
     </section>
 
@@ -334,6 +702,46 @@
     <p>UNCT-HCT Collective Outcomes Dashboard · Food Security · Jul–Sep 2025</p>
   </div>
 </footer>
+
+
+<div id="map-drawer-overlay" class="map-drawer-overlay"></div>
+
+<aside id="map-selector-drawer" class="map-selector-drawer" aria-hidden="true">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title">Select states and counties</div>
+    </div>
+    <button id="close-map-selector" class="drawer-close-btn" type="button" aria-label="Close selector">×</button>
+  </div>
+
+  <div class="drawer-body">
+    <input id="map-selector-search" class="drawer-search" type="text" placeholder="Search for a state or county"/>
+
+    <div class="drawer-controls">
+      <select id="map-selector-type" class="drawer-select">
+        <option value="All">Show: States and counties</option>
+        <option value="State">States/Admin areas only</option>
+        <option value="County">Counties only</option>
+      </select>
+
+      <select id="map-selector-sort" class="drawer-select">
+        <option value="value-desc">Sort: Highest value</option>
+        <option value="value-asc">Sort: Lowest value</option>
+        <option value="name-asc">Sort: Name A-Z</option>
+      </select>
+    </div>
+
+    <div class="drawer-actions">
+      <span id="map-selector-count" class="drawer-selected-count">0 selected</span>
+      <div>
+        <button id="clear-map-selection" class="drawer-action-btn" type="button">Clear</button>
+        <button id="apply-map-selection" class="drawer-action-btn primary" type="button">Apply</button>
+      </div>
+    </div>
+
+    <div id="map-selector-list" class="drawer-list"></div>
+  </div>
+</aside>
 
 </body>
 </html>
